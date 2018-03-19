@@ -1,0 +1,13 @@
+{
+    "name": "binsuper/moon",
+    "type": "framework",
+    "authors": [
+        {
+            "name": "Gino Huang",
+            "email": "binsuper@126.com"
+        }
+    ],
+    "require": {
+        "catfan/Medoo": "^1.5"
+    }
+}
