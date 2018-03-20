@@ -801,7 +801,7 @@ class Selector {
     /**
      * 
      * @param string $k
-     * @param array $v
+     * @param string $v
      * @return \Moon\Selector
      */
     public function valueFunc(string $k, string $v): Selector {
@@ -1113,6 +1113,13 @@ class Model extends Table {
      * @return \Moon\Model
      */
     public function updateTimestamp(): Model {
+        if (is_null($this->getPrimaryValue()) && !empty($this->column_create_time)) {
+            //新增
+            $this->needSelector()->valueFunc($this->column_create_time, 'NOW()');
+        }
+        if (!empty($this->column_update_time)) {
+            $this->needSelector()->valueFunc($this->column_update_time, 'NOW()');
+        }
         return $this;
     }
 
