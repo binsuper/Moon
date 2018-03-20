@@ -16,6 +16,5 @@
         "psr-4": {
             "Moon\\": "/src"
         }
-    },
-    "minimum-stability": "dev"
+    }
 }

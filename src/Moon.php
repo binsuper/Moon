@@ -315,7 +315,7 @@ class MedooConnection implements Connection {
      * @param \Moon\Selector $selector
      */
     public function insert(Selector ...$selectors) {
-        if (empty($values)) {
+        if (empty($selectors)) {
             return false;
         }
         $values = [];
@@ -326,7 +326,11 @@ class MedooConnection implements Connection {
                 $values[] = $tmp;
             }
         }
-        return $this->medoo->insert($table, $values);
+        $stmt = $this->medoo->insert($table, $values);
+        if ($stmt === false || '00000' !== $stmt->errorCode()) {
+            return false;
+        }
+        return $this->medoo->id();
     }
 
     /**
@@ -339,7 +343,11 @@ class MedooConnection implements Connection {
         if (empty($where)) {  //防止删除全表
             return 0;
         }
-        return $this->medoo->delete($selector->tableName(false), $where);
+        $stmt = $this->medoo->delete($selector->tableName(false), $where);
+        if ($stmt === false || '00000' !== $stmt->errorCode()) {
+            return false;
+        }
+        return $stmt->rowCount();
     }
 
     /**
@@ -348,11 +356,19 @@ class MedooConnection implements Connection {
      * @return int 受影响的行数
      */
     public function update(Selector $selector) {
+        $value = $selector->contextValue();
+        if (empty($value)) {  //没有更新的字段
+            return 0;
+        }
         $where = $selector->contextWhere();
         if (empty($where)) {  //防止更新全表
             return 0;
         }
-        return $this->medoo->update($selector->tableName(false), $selector->contextValue(), $where);
+        $stmt = $this->medoo->update($selector->tableName(false), $value, $where);
+        if ($stmt === false || '00000' !== $stmt->errorCode()) {
+            return false;
+        }
+        return $stmt->rowCount();
     }
 
 }
@@ -378,6 +394,22 @@ class Selector {
     public function __construct(string $table, string $alias = '') {
         $this->table = $table;
         $this->alias = $alias;
+    }
+
+    /**
+     * 清空构造器
+     * @return \Moon\Selector
+     */
+    public function clear(): Selector {
+        $this->_columns = [];
+        $this->_joins = [];
+        $this->_conds = [];
+        $this->_order = [];
+        $this->_group = [];
+        $this->_having = [];
+        $this->_limit = [];
+        $this->_values = [];    //更新或插入的数据列表
+        return $this;
     }
 
     /**
@@ -723,7 +755,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function valueJson(string $k, array $v): Selector {
-        return $this->value('(JSON)' . $k, $v);
+        return $this->value($k . '[JSON]', $v);
     }
 
     /**
@@ -847,11 +879,28 @@ class Table {
     public $table;  //表明
     public $alias = '';  //别名
     protected $selector;
+
+    /**
+     * @var \Moon\Moon 
+     */
     public $moon;
+    protected $_debug = false;
 
     public function __construct(string $table = '', string $alias = '') {
         $this->table = $table;
         $this->alias = $alias;
+    }
+
+    public function __call($name, $arguments) {
+        if (method_exists($this->needSelector(), $name)) {
+            $ret = call_user_func_array([$this->needSelector(), $name], $arguments);
+            if (is_object($ret) && $ret instanceof Selector) {
+                return $this;
+            } else {
+                return $ret;
+            }
+        }
+        trigger_error('Call to undefined method ' . self::class . '::' . $name . '()', E_USER_ERROR);
     }
 
     /**
@@ -868,16 +917,13 @@ class Table {
         return $this->selector;
     }
 
-    public function __call($name, $arguments) {
-        if (method_exists($this->needSelector(), $name)) {
-            $ret = call_user_func_array([$this->needSelector(), $name], $arguments);
-            if (is_object($ret) && $ret instanceof Selector) {
-                return $this;
-            } else {
-                return $ret;
-            }
-        }
-        trigger_error('Call to undefined method ' . self::class . '::' . $name . '()', E_USER_ERROR);
+    /**
+     * 测试模式,直接输出sql
+     * @return \Moon\Model
+     */
+    public function debug(): Model {
+        $this->_debug = true;
+        return $this;
     }
 
     /**
@@ -886,7 +932,14 @@ class Table {
      */
     public function first() {
         $conn = $this->moon->getReader();
-        return $conn->fetch($this->needSelector());
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->fetch($selector);
+        $selector->clear();
+        return $ret;
     }
 
     /**
@@ -895,7 +948,62 @@ class Table {
      */
     public function all() {
         $conn = $this->moon->getReader();
-        return $conn->fetchAll($this->needSelector());
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->fetchAll($selector);
+        $selector->clear();
+        return $ret;
+    }
+
+    /**
+     * 插入数据
+     * @return int
+     */
+    public function insert() {
+        $conn = $this->moon->getWriter();
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->insert($selector);
+        $selector->clear();
+        return $ret;
+    }
+
+    /**
+     * 更新数据
+     * @return int
+     */
+    public function update() {
+        $conn = $this->moon->getWriter();
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->update($selector);
+        $selector->clear();
+        return $ret;
+    }
+
+    /**
+     * 删除数据
+     * @return int
+     */
+    public function remove() {
+        $conn = $this->moon->getWriter();
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->delete($selector);
+        $selector->clear();
+        return $ret;
     }
 
 }
@@ -905,14 +1013,18 @@ class Table {
  */
 class Model extends Table {
 
+    //主键列名
+    public $primary_key = 'id';
     //只搜索数组中的列名
     public $query_columns = [];
-    //只更新数组中的字段名称
+    //只更新数组中的列名
     public $update_columns = [];
     //插入的时间戳列名
     protected $column_create_time = 'created_time';
     //更新的时间戳列名
     protected $column_update_time = 'updated_time';
+    protected $_metadata = [];
+    protected $_curdata = [];
 
     public function __construct(bool $bInit = true) {
         if ($bInit) {
@@ -922,19 +1034,157 @@ class Model extends Table {
             parent::__construct($this->table, $this->alias);
             $this->moon = Moon::instance();
         }
+
+        if (!in_array($this->primary_key, $this->query_columns)) {
+            $this->query_columns[] = $this->primary_key;
+        }
     }
 
-    public function load($k, $v = null) {
+    public function __set($name, $value) {
+        if (in_array($name, $this->update_columns)) {
+            $this->setData($name, $value);
+        }
+    }
+
+    public function __get($name) {
+        if (in_array($name, $this->query_columns)) {
+            $this->getData($name);
+        }
+    }
+
+    public function __call($name, $arguments) {
+        if (method_exists($this->needSelector(), $name)) {
+            if ('value' === substr($name, 0, 5)) {
+                $key = $arguments[0] ?? null;
+                if (!empty($key) && in_array($key, $this->update_columns)) {
+                    return parent::__call($name, $arguments);
+                }
+            } else {
+                return parent::__call($name, $arguments);
+            }
+            return true;
+        }
+        trigger_error('Call to undefined method ' . self::class . '::' . $name . '()', E_USER_ERROR);
+    }
+
+    /**
+     * 设置数据
+     * @param string $column
+     * @param mixed $value
+     * @return \Moon\Model
+     */
+    public function setData(string $column, $value): Model {
+        $this->_curdata[$column] = $value;
+        if (in_array($column, $this->update_columns)) {
+            $this->value($column, $value);
+        }
+        return $this;
+    }
+
+    /**
+     * 获取数据
+     * @param string $column
+     * @return mixed
+     */
+    public function getData(string $column) {
+        return $this->_curdata[$column] ?? null;
+    }
+
+    /**
+     * 获取主键
+     * @return int
+     */
+    public function getPrimaryValue() {
+        return $this->_curdata[$this->primary_key] ?? null;
+    }
+
+    /**
+     * 设置主键数据
+     * @param mixed $v
+     * @return \Moon\Model
+     */
+    public function setPrimaryValue($v): Model {
+        $this->_curdata[$this->primary_key] = $v;
+        return $this;
+    }
+
+    /**
+     * 更新时间戳
+     * @return \Moon\Model
+     */
+    public function updateTimestamp(): Model {
+        return $this;
+    }
+
+    /**
+     * 加载数据
+     * @param mixed $value
+     * @param string $key
+     * @return \Moon\Model
+     */
+    public function load($value, $key = null) {
+        if (empty($value)) {
+            return false;
+        }
+        //默认匹配主键
+        if (is_null($key)) {
+            $key = $this->primary_key;
+        }
+        if (empty($key)) {
+            trigger_error('method load() need $key, null given', E_USER_ERROR);
+            return false;
+        }
         $conn = $this->moon->getReader();
-        $selector = $this->needSelector(false);
-        $selector->where($k, $v);
+        $selector = $this->needSelector();
+        $selector->where($key, $value);
         $selector->select($this->query_columns);
-        $data = $conn->fetch($selector);
+        $data = $this->first();
+        var_dump($data);
         if ($data === false) {
             return false;
         }
-        print_r($data);
+        $this->_metadata = $data;
+        $this->_curdata = $data;
         return $this;
+    }
+
+    /**
+     * 重载数据
+     * \Moon\Model
+     */
+    public function reload() {
+        $primary_value = $this->getPrimaryValue();
+        if (empty($primary_value)) {
+            return false;
+        }
+        return $this->load($primary_value);
+    }
+
+    /**
+     * 保存模型
+     * @return boolean
+     */
+    public function save($reload = false) {
+        $primary_value = $this->getPrimaryValue();
+        $b_insert = false;
+        if (is_null($primary_value)) {
+            $b_insert = true;
+        }
+        if ($b_insert) {
+            $ret = $this->insert();
+        } else {
+            $selector = $this->needSelector();
+            $selector->where($this->primary_key, $primary_value);
+            $ret = $this->update();
+        }
+        if ($ret != false && $reload) {
+            $this->reload();
+        }
+        return $ret;
+    }
+
+    public function remove() {
+        parent::remove();
     }
 
 }
