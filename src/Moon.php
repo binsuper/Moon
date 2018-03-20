@@ -1087,7 +1087,7 @@ class Model extends Table {
      * @return mixed
      */
     public function getData(string $column = '') {
-        if(empty($column)){
+        if (empty($column)) {
             return $this->_curdata;
         }
         return $this->_curdata[$column] ?? null;
@@ -1132,21 +1132,19 @@ class Model extends Table {
      * @param string $key
      * @return \Moon\Model
      */
-    public function load($value, $key = null) {
-        if (empty($value)) {
-            return false;
-        }
-        //默认匹配主键
-        if (is_null($key)) {
-            $key = $this->primary_key;
-        }
-        if (empty($key)) {
-            trigger_error('method load() need $key, null given', E_USER_ERROR);
-            return false;
-        }
-        $conn = $this->moon->getReader();
+    public function load($value = null, $key = null) {
         $selector = $this->needSelector();
-        $selector->where($key, $value);
+        if (!empty($value)) {
+            //默认匹配主键
+            if (is_null($key)) {
+                $key = $this->primary_key;
+            }
+            if (empty($key)) {
+                trigger_error('method load() need $key, null given', E_USER_ERROR);
+                return false;
+            }
+            $selector->where($key, $value);
+        }
         $selector->select($this->query_columns);
         $data = $this->first();
         if ($data === false) {
