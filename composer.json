@@ -7,7 +7,9 @@
             "email": "binsuper@126.com"
         }
     ],
+    "license": "MIT",  
     "require": {
+        "php": ">=7.2.3",  
         "catfan/Medoo": "^1.5"
     }
 }
