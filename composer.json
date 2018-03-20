@@ -11,5 +11,11 @@
     "require": {
         "php": ">=7.2.3",  
         "catfan/Medoo": "^1.5"
-    }
+    },
+    "autoload": {
+        "psr-4": {
+            "Moon\\": "/src"
+        }
+    },
+    "minimum-stability": "dev"
 }
