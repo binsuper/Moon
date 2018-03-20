@@ -1086,7 +1086,10 @@ class Model extends Table {
      * @param string $column
      * @return mixed
      */
-    public function getData(string $column) {
+    public function getData(string $column = '') {
+        if(empty($column)){
+            return $this->_curdata;
+        }
         return $this->_curdata[$column] ?? null;
     }
 
