@@ -1146,7 +1146,6 @@ class Model extends Table {
         $selector->where($key, $value);
         $selector->select($this->query_columns);
         $data = $this->first();
-        var_dump($data);
         if ($data === false) {
             return false;
         }
