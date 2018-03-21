@@ -876,8 +876,8 @@ class Selector {
 
 class Table {
 
-    public $table;  //表明
-    public $alias = '';  //别名
+    protected $table;  //表明
+    protected $alias = '';  //别名
     protected $selector;
 
     /**
