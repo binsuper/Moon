@@ -554,7 +554,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function whereBetween(string $k, $v1, $v2): Selector {
-        return $this->where($k . '[><]', [$v, $v2]);
+        return $this->where($k . '[<>]', [$v, $v2]);
     }
 
     /**
@@ -565,7 +565,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function whereNotBetween(string $k, $v1, $v2): Selector {
-        return $this->where($k . '[<>]', [$v1, $v2]);
+        return $this->where($k . '[><]', [$v1, $v2]);
     }
 
     /**
@@ -594,7 +594,8 @@ class Selector {
 
     /**
      * 查询条件 - like
-     * @param callable $func
+     * @param string $k
+     * @param string $v
      * @return \Moon\Selector
      */
     public function whereLike(string $k, string $v): Selector {
@@ -603,7 +604,8 @@ class Selector {
 
     /**
      * 查询条件 - not like
-     * @param callable $func
+     * @param string $k
+     * @param string $v
      * @return \Moon\Selector
      */
     public function whereNotLike(string $k, string $v): Selector {
@@ -634,44 +636,63 @@ class Selector {
         return $this;
     }
 
+    protected function _joinF(int $type, $table, callable $func){
+        if(is_object($table) && ($table instanceof Selector)){
+            
+        }else if(is_string($table)){
+            $alias = '';
+            if(preg_match('/(\w+)\((\w+)\)?/', $table, $info)){
+                $table = $info[1];
+                $alias = $info[2] ?? '';
+            }
+            $table = new self($table, $alias);
+        }else{
+            return false;
+        }
+        $new_selector = new self($this->table, $this->alias);
+        call_user_func($func, $new_selector);
+        $where = $new_selector->_conds;
+        return $this->_join($type, $table->tableName(), $where);
+    }
+    
     /**
      * 内连接
      * @param string $table
-     * @param string|array $where
+     * @param callable $func
      * @return \Moon\Selector
      */
-    public function join(string $table, $where): Selector {
-        return $this->_join(self::JOIN_INNER, $table, $where);
+    public function join(string $table, callable $func): Selector {
+        return $this->_joinF(self::JOIN_INNER, $table, $func);
     }
 
     /**
      * 左连接
      * @param string $table
-     * @param string|array $where
+     * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinLeft(string $table, $where): Selector {
-        return $this->_join(self::JOIN_LEFT, $table, $where);
+    public function joinLeft(string $table, callable $func): Selector {
+        return $this->_joinF(self::JOIN_LEFT, $table, $func);
     }
 
     /**
      * 右连接
      * @param string $table
-     * @param string|array $where
+     * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinRight(string $table, $where): Selector {
-        return $this->_join(self::JOIN_RIGHT, $table, $where);
+    public function joinRight(string $table, callable $func): Selector {
+        return $this->_joinF(self::JOIN_RIGHT, $table, $func);
     }
 
     /**
      * 外连接
      * @param string $table
-     * @param string|array $where
+     * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinFull(string $table, $where): Selector {
-        return $this->_join(self::JOIN_FULL, $table, $where);
+    public function joinFull(string $table, callable $func): Selector {
+        return $this->_joinF(self::JOIN_FULL, $table, $func);
     }
 
     /**
@@ -872,12 +893,24 @@ class Selector {
         return $name;
     }
 
+    /**
+     * 返回列名
+     * @param string $col_name
+     * @return string
+     */
+    public function col(string $col_name){
+        if(empty($this->alias)){
+            return $this->table . '.' . $col_name;
+        }
+        return $this->alias . '.' . $col_name;
+    }
+    
 }
 
-class Table {
+abstract class Table {
 
-    protected $table;  //表明
-    protected $alias = '';  //别名
+    public $table;  //表明
+    public $alias = '';  //别名
     protected $selector;
 
     /**
@@ -1005,7 +1038,7 @@ class Table {
         $selector->clear();
         return $ret;
     }
-
+    
 }
 
 /**
@@ -1048,8 +1081,9 @@ class Model extends Table {
 
     public function __get($name) {
         if (in_array($name, $this->query_columns)) {
-            $this->getData($name);
+            return $this->getData($name);
         }
+        return null;
     }
 
     public function __call($name, $arguments) {
