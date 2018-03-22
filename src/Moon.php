@@ -37,8 +37,10 @@ class Moon {
             return false;
         }
 
-        $this->rd_separate = isset($options['rd_seprate']) ? (bool) $options['rd_seprate'] : false;
+        $this->setConnClass($options['class'] ?? null);
 
+        $this->rd_separate = isset($options['rd_seprate']) ? (bool) $options['rd_seprate'] : false;
+        
         //区分读写分离
         if ($this->rd_separate) {
             //库类型必须一致
@@ -162,7 +164,7 @@ class Moon {
      * 连接类名
      * @return string
      */
-    protected function getConnClass(): string {
+    public function getConnClass(): string {
         return empty($this->class_connection) ? MedooConnection::class : $this->class_connection;
     }
 
@@ -170,7 +172,7 @@ class Moon {
      * 设置连接类名
      * @param string $class
      */
-    protected function setConnClass(string $class) {
+    public function setConnClass(string $class) {
         $this->class_connection = $class;
     }
 
@@ -214,6 +216,10 @@ class Moon {
 
 interface Connection {
 
+    public function error();
+    
+    public function isError();
+    
     public function fetch(Selector $selector);
 
     public function fetchAll(Selector $selector);
@@ -254,6 +260,25 @@ class MedooConnection implements Connection {
         }
         trigger_error('Call to undefined method ' . self::class . '::' . $name . '()', E_USER_ERROR);
     }
+    
+    /**
+     * 
+     * @return array
+     */
+    public function error(){
+        return $this->medoo->error();
+    }
+    
+    /**
+     * @return boolean
+     */
+    public function isError(){
+        $error = $this->error();
+        if($error === null || $error[2] === null){
+            return false;
+        }
+        return true;
+    }
 
     /**
      * 查询一条记录
@@ -268,6 +293,9 @@ class MedooConnection implements Connection {
             $ret = $this->medoo->select($handle->tableName(), $handle->contextColumn(), $handle->contextWhere());
         } else {
             $ret = $this->medoo->select($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
+        }
+        if($this->isError()){
+            return false;
         }
         if (is_array($ret)) {
             return $ret[0] ?? [];
@@ -288,6 +316,9 @@ class MedooConnection implements Connection {
         } else {
             $ret = $this->medoo->select($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
         }
+        if($this->isError()){
+            return false;
+        }
         if (is_array($ret)) {
             return new Collection($ret);
         }
@@ -306,6 +337,9 @@ class MedooConnection implements Connection {
             $ret = $this->medoo->count($handle->tableName(), $handle->contextWhere());
         } else {
             $ret = $this->medoo->count($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
+        }
+        if($this->isError()){
+            return false;
         }
         return $ret;
     }
