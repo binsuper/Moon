@@ -37,7 +37,7 @@ class Moon {
             return false;
         }
 
-        $this->setConnClass($options['class'] ?? null);
+        $this->setConnClass($options['class'] ?? '');
 
         $this->rd_separate = isset($options['rd_seprate']) ? (bool) $options['rd_seprate'] : false;
         
@@ -1236,7 +1236,7 @@ class Model extends Table {
     }
 
     /**
-     * 保存模型
+     * 保存数据
      * @return boolean
      */
     public function save($reload = false) {
@@ -1258,8 +1258,20 @@ class Model extends Table {
         return $ret;
     }
 
+    /**
+     * 删除数据
+     * @return boolean
+     */
     public function remove() {
-        parent::remove();
+        $primary_value = $this->getPrimaryValue();
+        if(empty($primary_value)){
+            return false;
+        }
+        $selector = $this->needSelector();
+        $selector->where($this->primary_key, $primary_value);
+        $ret = parent::remove();
+        $this->setPrimaryValue(null);
+        return $ret;
     }
 
 }
