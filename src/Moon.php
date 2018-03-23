@@ -40,7 +40,7 @@ class Moon {
         $this->setConnClass($options['class'] ?? '');
 
         $this->rd_separate = isset($options['rd_seprate']) ? (bool) $options['rd_seprate'] : false;
-        
+
         //区分读写分离
         if ($this->rd_separate) {
             //库类型必须一致
@@ -217,9 +217,9 @@ class Moon {
 interface Connection {
 
     public function error();
-    
+
     public function isError();
-    
+
     public function fetch(Selector $selector);
 
     public function fetchAll(Selector $selector);
@@ -260,21 +260,21 @@ class MedooConnection implements Connection {
         }
         trigger_error('Call to undefined method ' . self::class . '::' . $name . '()', E_USER_ERROR);
     }
-    
+
     /**
      * 
      * @return array
      */
-    public function error(){
+    public function error() {
         return $this->medoo->error();
     }
-    
+
     /**
      * @return boolean
      */
-    public function isError(){
+    public function isError() {
         $error = $this->error();
-        if($error === null || $error[2] === null){
+        if ($error === null || $error[2] === null) {
             return false;
         }
         return true;
@@ -294,7 +294,7 @@ class MedooConnection implements Connection {
         } else {
             $ret = $this->medoo->select($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
         }
-        if($this->isError()){
+        if ($this->isError()) {
             return false;
         }
         if (is_array($ret)) {
@@ -316,7 +316,7 @@ class MedooConnection implements Connection {
         } else {
             $ret = $this->medoo->select($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
         }
-        if($this->isError()){
+        if ($this->isError()) {
             return false;
         }
         if (is_array($ret)) {
@@ -338,7 +338,7 @@ class MedooConnection implements Connection {
         } else {
             $ret = $this->medoo->count($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
         }
-        if($this->isError()){
+        if ($this->isError()) {
             return false;
         }
         return $ret;
@@ -446,6 +446,21 @@ class Selector {
         return $this;
     }
 
+    protected function _selectName($col){
+        $prefix = $this->table;
+        if(!empty($this->alias)){
+            $prefix = $this->alias;
+        }
+        if(is_string($col) && false === strpos($col, '.')){
+            return $prefix . '.' . $col;
+        }else if(is_array($col)){
+            foreach($col as $k => $c){
+                $col[$k] = $this->_selectName($c);
+            }
+        }
+        return $col;
+    }
+    
     /**
      * 添加要查询的字段
      * @param string|array $c
@@ -453,16 +468,19 @@ class Selector {
      */
     public function select($c, $alias = null): Selector {
         if (is_array($c)) {
+            $c = $this->_selectName($c);
             $this->_columns = array_merge($this->_columns, $c);
         } else {
             $c = explode(',', $c);
             if (count($c) > 1) {
                 $c = explode(',', $c);
+                return $this->select($c);
             } else {
                 $key = $c[0];
                 if (!empty($alias)) {
                     $key .= '(' . $alias . ')';
                 }
+                $key = $this->_selectName($key);
                 $this->_columns[] = $key;
             }
         }
@@ -670,17 +688,17 @@ class Selector {
         return $this;
     }
 
-    protected function _joinF(int $type, $table, callable $func){
-        if(is_object($table) && ($table instanceof Selector)){
+    protected function _joinF(int $type, $table, callable $func) {
+        if (is_object($table) && ($table instanceof Selector)) {
             
-        }else if(is_string($table)){
+        } else if (is_string($table)) {
             $alias = '';
-            if(preg_match('/(\w+)\((\w+)\)?/', $table, $info)){
+            if (preg_match('/(\w+)\((\w+)\)?/', $table, $info)) {
                 $table = $info[1];
                 $alias = $info[2] ?? '';
             }
             $table = new self($table, $alias);
-        }else{
+        } else {
             return false;
         }
         $new_selector = new self($this->table, $this->alias);
@@ -688,7 +706,7 @@ class Selector {
         $where = $new_selector->_conds;
         return $this->_join($type, $table->tableName(), $where);
     }
-    
+
     /**
      * 内连接
      * @param string $table
@@ -932,13 +950,13 @@ class Selector {
      * @param string $col_name
      * @return string
      */
-    public function col(string $col_name){
-        if(empty($this->alias)){
+    public function col(string $col_name) {
+        if (empty($this->alias)) {
             return $this->table . '.' . $col_name;
         }
         return $this->alias . '.' . $col_name;
     }
-    
+
 }
 
 abstract class Table {
@@ -1072,7 +1090,7 @@ abstract class Table {
         $selector->clear();
         return $ret;
     }
-    
+
 }
 
 /**
@@ -1102,19 +1120,19 @@ class Model extends Table {
             $this->moon = Moon::instance();
         }
 
-        if (!in_array($this->primary_key, $this->query_columns)) {
+        if (is_array($this->query_columns) && !$this->checkQueryColumn($this->primary_key)) {
             $this->query_columns[] = $this->primary_key;
         }
     }
 
     public function __set($name, $value) {
-        if (in_array($name, $this->update_columns)) {
+        if ($this->checkUpdateColumn($name)) {
             $this->setData($name, $value);
         }
     }
 
     public function __get($name) {
-        if (in_array($name, $this->query_columns)) {
+        if ($this->checkQueryColumn($name)) {
             return $this->getData($name);
         }
         return null;
@@ -1124,7 +1142,7 @@ class Model extends Table {
         if (method_exists($this->needSelector(), $name)) {
             if ('value' === substr($name, 0, 5)) {
                 $key = $arguments[0] ?? null;
-                if (!empty($key) && in_array($key, $this->update_columns)) {
+                if (!empty($key) && $this->checkUpdateColumn($key)) {
                     return parent::__call($name, $arguments);
                 }
             } else {
@@ -1136,6 +1154,34 @@ class Model extends Table {
     }
 
     /**
+     * 检查列名是否可以更新
+     * @param string $column_name
+     * @return boolean
+     */
+    protected function checkUpdateColumn(string $column_name) {
+        if ($this->update_columns === '*') {
+            return true;
+        } else if (in_array($column_name, $this->update_columns)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 检查列名是否可以获取
+     * @param string $column_name
+     * @return boolean
+     */
+    protected function checkQueryColumn(string $column_name) {
+        if ($this->query_columns === '*') {
+            return true;
+        } else if (in_array($column_name, $this->query_columns)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 设置数据
      * @param string $column
      * @param mixed $value
@@ -1143,7 +1189,7 @@ class Model extends Table {
      */
     public function setData(string $column, $value): Model {
         $this->_curdata[$column] = $value;
-        if (in_array($column, $this->update_columns)) {
+        if ($this->checkUpdateColumn($column)) {
             $this->value($column, $value);
         }
         return $this;
@@ -1195,6 +1241,27 @@ class Model extends Table {
     }
 
     /**
+     * @return array
+     */
+    public function first() {
+        if (is_array($this->query_columns)) {
+            $this->needSelector()->select($this->query_columns);
+        }
+        return parent::first();
+    }
+
+    /**
+     * 获取符合条件的数据
+     * @return array
+     */
+    public function all() {
+        if (is_array($this->query_columns)) {
+            $this->needSelector()->select($this->query_columns);
+        }
+        return parent::all();
+    }
+
+    /**
      * 加载数据
      * @param mixed $value
      * @param string $key
@@ -1213,7 +1280,6 @@ class Model extends Table {
             }
             $selector->where($key, $value);
         }
-        $selector->select($this->query_columns);
         $data = $this->first();
         if ($data === false) {
             return false;
@@ -1264,7 +1330,7 @@ class Model extends Table {
      */
     public function remove() {
         $primary_value = $this->getPrimaryValue();
-        if(empty($primary_value)){
+        if (empty($primary_value)) {
             return false;
         }
         $selector = $this->needSelector();
