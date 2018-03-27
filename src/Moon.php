@@ -1018,7 +1018,7 @@ abstract class Table {
      * 获取一个查询构造器
      * @return \Moon\Selector
      */
-    protected function needSelector(bool $cache = true): Selector {
+    public function needSelector(bool $cache = true): Selector {
         if (!$cache) {
             return new Selector($this->table, $this->alias);
         }
@@ -1258,10 +1258,10 @@ class Model extends Table {
     public function updateTimestamp(): Model {
         if (is_null($this->getPrimaryValue()) && !empty($this->column_create_time)) {
             //新增
-            $this->needSelector()->valueFunc($this->column_create_time, 'NOW()');
+            $this->needSelector()->value($this->column_create_time, time());
         }
         if (!empty($this->column_update_time)) {
-            $this->needSelector()->valueFunc($this->column_update_time, 'NOW()');
+            $this->needSelector()->value($this->column_update_time, time());
         }
         return $this;
     }
