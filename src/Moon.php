@@ -176,6 +176,10 @@ class Moon {
         $this->class_connection = $class;
     }
 
+    public function transaction(callable $action) {
+        return $this->getWriter()->transaction($action);
+    }
+
     /**
      * 初始化配置信息
      * @param array $options
@@ -231,6 +235,8 @@ interface Connection {
     public function update(Selector $selector);
 
     public function delete(Selector $selector);
+
+    public function transaction(callable $action);
 }
 
 class Collection extends \ArrayObject {
@@ -405,6 +411,26 @@ class MedooConnection implements Connection {
         return $stmt->rowCount();
     }
 
+    public function transaction(callable $action) {
+        if (is_callable($action)) {
+            $this->medoo->pdo->beginTransaction();
+            try {
+                $result = $action($this);
+                if ($result === false) {
+                    $this->medoo->pdo->rollBack();
+                } else {
+                    $this->medoo->pdo->commit();
+                }
+            } catch (Exception $e) {
+                $this->medoo->pdo->rollBack();
+                throw $e;
+            }
+            return $result;
+        }
+
+        return false;
+    }
+
 }
 
 class Selector {
@@ -446,21 +472,21 @@ class Selector {
         return $this;
     }
 
-    protected function _selectName($col){
+    protected function _selectName($col) {
         $prefix = $this->table;
-        if(!empty($this->alias)){
+        if (!empty($this->alias)) {
             $prefix = $this->alias;
         }
-        if(is_string($col) && false === strpos($col, '.')){
+        if (is_string($col) && false === strpos($col, '.')) {
             return $prefix . '.' . $col;
-        }else if(is_array($col)){
-            foreach($col as $k => $c){
+        } else if (is_array($col)) {
+            foreach ($col as $k => $c) {
                 $col[$k] = $this->_selectName($c);
             }
         }
         return $col;
     }
-    
+
     /**
      * 添加要查询的字段
      * @param string|array $c
@@ -1281,7 +1307,7 @@ class Model extends Table {
             $selector->where($key, $value);
         }
         $data = $this->first();
-        if ($data === false) {
+        if ($data === false || empty($data)) {
             return false;
         }
         $this->_metadata = $data;
