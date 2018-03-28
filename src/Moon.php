@@ -1117,6 +1117,18 @@ abstract class Table {
         return $ret;
     }
 
+    public function count() {
+        $conn = $this->moon->getReader();
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->rowCount($selector);
+        $selector->clear();
+        return $ret;
+    }
+
 }
 
 /**
