@@ -237,6 +237,18 @@ interface Connection {
     public function delete(Selector $selector);
 
     public function transaction(callable $action);
+    
+    public function query($query, $map = []);
+    
+    public function exec($query, $map = []);
+    
+    public function quote($string);
+    
+    public function tableQuote($table);
+    
+    public function log();
+    
+    public function last();
 }
 
 class Collection extends \ArrayObject {
@@ -246,13 +258,16 @@ class Collection extends \ArrayObject {
 class MedooConnection implements Connection {
 
     protected $option;
-    protected $medoo;
+    public $medoo;
     protected $pdo;
+    public $prefix = '';
 
     public function __construct(array $options) {
         $this->option = $options;
         $this->medoo = new Medoo($options);
         $this->pdo = $this->medoo->pdo;
+        
+        $this->prefix = $options[ 'prefix' ] ?? '';
     }
 
     public function __call($name, $arguments) {
@@ -429,6 +444,67 @@ class MedooConnection implements Connection {
         }
 
         return false;
+    }
+
+    /**
+     * 查询sql
+     * @param string $query
+     * @param array $map
+     * @return array|boolean 正确是返回结果数组
+     */
+    public function query($query, $map = array()) {
+        $stmt = $this->medoo->query($query, $map);
+        if ($stmt === false || '00000' !== $stmt->errorCode()) {
+            return false;
+        }
+        return $stmt->setFetchMode(\PDO::FETCH_COLUMN)->fetchAll();
+    }
+
+    /**
+     * 执行sql
+     * @param string $query
+     * @param array $map
+     * @return boolean|int 执行成功返回影响的记录数，否则返回false
+     */
+    public function exec($query, $map = array()) {
+        $stmt = $this->medoo->query($query, $map);
+        if ($stmt === false || '00000' !== $stmt->errorCode()) {
+            return false;
+        }
+        return $stmt->rowCount();
+    }
+
+    /**
+     * Quotes a string for use in a query. 
+     * @param string $string
+     * @return string
+     */
+    public function quote($string) {
+        return $this->medoo->quote($string);
+    }
+
+    /**
+     * @param string $table
+     * @return string
+     */
+    public function tableQuote($table) {
+        return '"' . $this->prefix . $table . '"';
+    }
+
+    /**
+     * 返回最后执行的sql
+     * @return string
+     */
+    public function last() {
+        return $this->medoo->last();
+    }
+
+    /**
+     * 返回所有执行的查询
+     * @return array
+     */
+    public function log() {
+        return $this->medoo->log();
     }
 
 }
@@ -697,7 +773,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function whereFunc(string $k, string $v): Selector {
-        return $this->where('#' . $k, $v);
+        return $this->where($k, Moon::raw($v));
     }
 
     /**
@@ -904,7 +980,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function valueFunc(string $k, string $v): Selector {
-        return $this->value('#' . $k, $v);
+        return $this->value($k, Moon::raw($v));
     }
 
     /**
@@ -1139,9 +1215,9 @@ class Model extends Table {
     //主键列名
     public $primary_key = 'id';
     //只搜索数组中的列名
-    public $query_columns = [];
+    public $query_columns = '*';
     //只更新数组中的列名
-    public $update_columns = [];
+    public $update_columns = '*';
     //插入的时间戳列名
     protected $column_create_time = 'created_time';
     //更新的时间戳列名
