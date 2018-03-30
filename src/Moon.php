@@ -237,17 +237,17 @@ interface Connection {
     public function delete(Selector $selector);
 
     public function transaction(callable $action);
-    
+
     public function query($query, $map = []);
-    
+
     public function exec($query, $map = []);
-    
+
     public function quote($string);
-    
+
     public function tableQuote($table);
-    
+
     public function log();
-    
+
     public function last();
 }
 
@@ -266,8 +266,8 @@ class MedooConnection implements Connection {
         $this->option = $options;
         $this->medoo = new Medoo($options);
         $this->pdo = $this->medoo->pdo;
-        
-        $this->prefix = $options[ 'prefix' ] ?? '';
+
+        $this->prefix = $options['prefix'] ?? '';
     }
 
     public function __call($name, $arguments) {
@@ -1272,8 +1272,10 @@ class Model extends Table {
      * @param string $column_name
      * @return boolean
      */
-    protected function checkUpdateColumn(string $column_name) {
+    protected function checkUpdateColumn($column_name) {
         if ($this->update_columns === '*') {
+            return true;
+        } else if (is_array($column_name)) {
             return true;
         } else if (in_array($column_name, $this->update_columns)) {
             return true;
