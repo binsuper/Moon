@@ -426,19 +426,30 @@ class MedooConnection implements Connection {
         return $stmt->rowCount();
     }
 
+    /**
+     * 事务嵌套处理
+     * @param \Moon\callable $action
+     * @return boolean
+     * @throws \Moon\Exception
+     */
     public function transaction(callable $action) {
         if (is_callable($action)) {
-            $this->medoo->pdo->beginTransaction();
-            try {
+            if($this->medoo->pdo->inTransaction()){
+                //事务嵌套
                 $result = $action($this);
-                if ($result === false) {
+            }{
+                $this->medoo->pdo->beginTransaction();
+                try {
+                    $result = $action($this);
+                    if ($result === false) {
+                        $this->medoo->pdo->rollBack();
+                    } else {
+                        $this->medoo->pdo->commit();
+                    }
+                } catch (Exception $e) {
                     $this->medoo->pdo->rollBack();
-                } else {
-                    $this->medoo->pdo->commit();
+                    throw $e;
                 }
-            } catch (Exception $e) {
-                $this->medoo->pdo->rollBack();
-                throw $e;
             }
             return $result;
         }
@@ -815,37 +826,37 @@ class Selector {
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function join(string $table, callable $func): Selector {
+    public function join($table, callable $func): Selector {
         return $this->_joinF(self::JOIN_INNER, $table, $func);
     }
 
     /**
      * 左连接
-     * @param string $table
+     * @param string|\Moon\Selector $table
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinLeft(string $table, callable $func): Selector {
+    public function joinLeft($table, callable $func): Selector {
         return $this->_joinF(self::JOIN_LEFT, $table, $func);
     }
 
     /**
      * 右连接
-     * @param string $table
+     * @param string|\Moon\Selector $table
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinRight(string $table, callable $func): Selector {
+    public function joinRight($table, callable $func): Selector {
         return $this->_joinF(self::JOIN_RIGHT, $table, $func);
     }
 
     /**
      * 外连接
-     * @param string $table
+     * @param string|\Moon\Selector $table
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinFull(string $table, callable $func): Selector {
+    public function joinFull($table, callable $func): Selector {
         return $this->_joinF(self::JOIN_FULL, $table, $func);
     }
 
@@ -1429,6 +1440,9 @@ class Model extends Table {
         }
         if ($b_insert) {
             $ret = $this->insert();
+            if(false !== $ret){
+                $this->setPrimaryValue($ret);
+            }
         } else {
             $selector = $this->needSelector();
             $selector->where($this->primary_key, $primary_value);
