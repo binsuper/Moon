@@ -11,6 +11,137 @@ use Medoo\{
     Raw
 };
 
+class MoonMedoo extends Medoo {
+
+    /**
+     * 有则更新，无则插入
+     * @param string $table
+     * @param array $datas
+     * @param array $update_datas
+     * @return \PDOStatement|booelan
+     */
+    public function insertUpdate($table, $datas, $update_datas) {
+        $stack = [];
+        $columns = [];
+        $fields = [];
+        $update_fields = [];
+        $map = [];
+
+        if (!isset($datas[0])) {
+            $datas = [$datas];
+        }
+
+        foreach ($datas as $data) {
+            foreach ($data as $key => $value) {
+                $columns[] = $key;
+            }
+        }
+
+        $columns = array_unique($columns);
+
+        foreach ($datas as $data) {
+            $values = [];
+
+            foreach ($columns as $key) {
+                if ($raw = $this->buildRaw($data[$key], $map)) {
+                    $values[] = $raw;
+                    continue;
+                }
+
+                $map_key = $this->mapKey();
+
+                $values[] = $map_key;
+
+                if (!isset($data[$key])) {
+                    $map[$map_key] = [null, PDO::PARAM_NULL];
+                } else {
+                    $value = $data[$key];
+
+                    $type = gettype($value);
+
+                    switch ($type) {
+                        case 'array':
+                            $map[$map_key] = [
+                                strpos($key, '[JSON]') === strlen($key) - 6 ?
+                                json_encode($value) :
+                                serialize($value),
+                                PDO::PARAM_STR
+                            ];
+                            break;
+
+                        case 'object':
+                            $value = serialize($value);
+
+                        case 'NULL':
+                        case 'resource':
+                        case 'boolean':
+                        case 'integer':
+                        case 'double':
+                        case 'string':
+                            $map[$map_key] = $this->typeMap($value, $type);
+                            break;
+                    }
+                }
+            }
+
+            $stack[] = '(' . implode($values, ', ') . ')';
+        }
+
+        foreach ($columns as $key) {
+            $fields[] = $this->columnQuote(preg_replace("/(\s*\[JSON\]$)/i", '', $key));
+        }
+
+        foreach ($update_datas as $key => $value) {
+            $column = $this->columnQuote(preg_replace("/(\s*\[(JSON|\+|\-|\*|\/)\]$)/i", '', $key));
+
+            if ($raw = $this->buildRaw($value, $map)) {
+                $update_fields[] = $column . ' = ' . $raw;
+                continue;
+            }
+
+            $map_key = $this->mapKey();
+
+            preg_match('/(?<column>[a-zA-Z0-9_]+)(\[(?<operator>\+|\-|\*|\/)\])?/i', $key, $match);
+
+            if (isset($match['operator'])) {
+                if (is_numeric($value)) {
+                    $update_fields[] = $column . ' = ' . $column . ' ' . $match['operator'] . ' ' . $value;
+                }
+            } else {
+                $update_fields[] = $column . ' = ' . $map_key;
+
+                $type = gettype($value);
+
+                switch ($type) {
+                    case 'array':
+                        $map[$map_key] = [
+                            strpos($key, '[JSON]') === strlen($key) - 6 ?
+                            json_encode($value) :
+                            serialize($value),
+                            PDO::PARAM_STR
+                        ];
+                        break;
+
+                    case 'object':
+                        $value = serialize($value);
+
+                    case 'NULL':
+                    case 'resource':
+                    case 'boolean':
+                    case 'integer':
+                    case 'double':
+                    case 'string':
+                        $map[$map_key] = $this->typeMap($value, $type);
+                        break;
+                }
+            }
+        }
+
+        return $this->exec('INSERT INTO ' . $this->tableQuote($table) . ' (' . implode(', ', $fields) . ') VALUES ' . implode(', ', $stack) . ' ON DUPLICATE KEY UPDATE ' . implode(', ', $update_fields), $map);
+    }
+
+}
+
 /**
  * Description of Moon
  *
@@ -25,6 +156,8 @@ class Moon {
     protected $slave_options = [];
     protected $conns = [];
     protected $class_connection;
+    //是否处于事务中
+    private $bInTrans = false;
 
     /**
      * 读写分离
@@ -89,7 +222,7 @@ class Moon {
      * @param array $map
      */
     public static function raw(string $string, array $map = []): Raw {
-        return Medoo::raw($string, $map);
+        return MoonMedoo::raw($string, $map);
     }
 
     /**
@@ -136,6 +269,10 @@ class Moon {
      * @return \Moon\Connection
      */
     public function getReader(): Connection {
+        //执行事务时,返回主服务器
+        if ($this->inTransaction()) {
+            return $this->getWriter();
+        }
         //不存在从服务器时，直接返回主服务器
         if (count($this->slave_options) == 0) {
             return $this->getWriter();
@@ -176,8 +313,24 @@ class Moon {
         $this->class_connection = $class;
     }
 
+    /**
+     * 事务
+     * @param callable $action
+     * @return mixed
+     */
     public function transaction(callable $action) {
-        return $this->getWriter()->transaction($action);
+        $this->bInTrans = true;
+        $ret = $this->getWriter()->transaction($action);
+        $this->bInTrans = false;
+        return $ret;
+    }
+
+    /**
+     * 是否正在执行一个事务
+     * @return boolean
+     */
+    public function inTransaction() {
+        return $this->bInTrans;
     }
 
     /**
@@ -231,6 +384,8 @@ interface Connection {
     public function rowCount(Selector $selector);
 
     public function insert(Selector ...$selectors);
+    
+    public function insertUpdate(Selector $update_selector, Selector ...$selectors);
 
     public function update(Selector $selector);
 
@@ -264,7 +419,7 @@ class MedooConnection implements Connection {
 
     public function __construct(array $options) {
         $this->option = $options;
-        $this->medoo = new Medoo($options);
+        $this->medoo = new MoonMedoo($options);
         $this->pdo = $this->medoo->pdo;
 
         $this->prefix = $options['prefix'] ?? '';
@@ -389,6 +544,30 @@ class MedooConnection implements Connection {
     }
 
     /**
+     * 插入数据
+     * @param \Moon\Selector $selector
+     */
+    public function insertUpdate(Selector $update_selector, Selector ...$selectors) {
+        if (empty($selectors)) {
+            return false;
+        }
+        $values = [];
+        $table = $selectors[0]->tableName(false);
+        foreach ($selectors as $selector) {
+            $tmp = $selector->contextValue();
+            if (count($tmp) > 0) {
+                $values[] = $tmp;
+            }
+        }
+        $update_values = $update_selector->contextValue();
+        $stmt = $this->medoo->insertUpdate($table, $values, $update_values);
+        if ($stmt === false || '00000' !== $stmt->errorCode()) {
+            return false;
+        }
+        return $this->medoo->id();
+    }
+    
+    /**
      * 删除数据
      * @param \Moon\Selector $selector
      * @return int 被删除的行数
@@ -434,10 +613,10 @@ class MedooConnection implements Connection {
      */
     public function transaction(callable $action) {
         if (is_callable($action)) {
-            if($this->medoo->pdo->inTransaction()){
+            if ($this->medoo->pdo->inTransaction()) {
                 //事务嵌套
                 $result = $action($this);
-            }{
+            } else {
                 $this->medoo->pdo->beginTransaction();
                 try {
                     $result = $action($this);
@@ -446,7 +625,7 @@ class MedooConnection implements Connection {
                     } else {
                         $this->medoo->pdo->commit();
                     }
-                } catch (Exception $e) {
+                } catch (\Exception $e) {
                     $this->medoo->pdo->rollBack();
                     throw $e;
                 }
@@ -1192,7 +1371,7 @@ abstract class Table {
      * 删除数据
      * @return int
      */
-    public function remove() {
+    public function delete() {
         $conn = $this->moon->getWriter();
         if ($this->_debug) {
             $conn->debug();
@@ -1440,7 +1619,7 @@ class Model extends Table {
         }
         if ($b_insert) {
             $ret = $this->insert();
-            if(false !== $ret){
+            if (false !== $ret) {
                 $this->setPrimaryValue($ret);
             }
         } else {
@@ -1455,7 +1634,7 @@ class Model extends Table {
     }
 
     /**
-     * 删除数据
+     * 删除当前模型数据
      * @return boolean
      */
     public function remove() {
@@ -1465,7 +1644,7 @@ class Model extends Table {
         }
         $selector = $this->needSelector();
         $selector->where($this->primary_key, $primary_value);
-        $ret = parent::remove();
+        $ret = $this->delete();
         $this->setPrimaryValue(null);
         return $ret;
     }
