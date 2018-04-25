@@ -647,7 +647,7 @@ class MedooConnection implements Connection {
         if ($stmt === false || '00000' !== $stmt->errorCode()) {
             return false;
         }
-        return $stmt->setFetchMode(\PDO::FETCH_COLUMN)->fetchAll();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
