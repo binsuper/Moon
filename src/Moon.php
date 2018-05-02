@@ -678,7 +678,7 @@ class MedooConnection implements Connection {
      * @return string
      */
     public function tableQuote($table) {
-        return '"' . $this->prefix . $table . '"';
+        return $this->prefix . $table;
     }
 
     /**
