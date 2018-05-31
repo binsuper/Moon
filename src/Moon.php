@@ -361,11 +361,11 @@ class Moon {
      * @param string $alias
      * @return \Moon\Model
      */
-    public static function model(string $table, string $alias = ''): Model {
+    public function model(string $table, string $alias = ''): Model {
         $obj = new Model(false);
         $obj->table = $table;
         $obj->alias = $alias;
-        $obj->moon = Moon::instance();
+        $obj->moon = $this;
         return $obj;
     }
 
