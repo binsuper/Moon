@@ -1076,7 +1076,7 @@ class Selector {
         if (is_array($k)) {
             $this->_order = array_merge($this->_order, $k);
         } else {
-            $this->_order[$k] = $v;
+            $this->_order[$k] = strtoupper($v);
         }
         return $this;
     }
