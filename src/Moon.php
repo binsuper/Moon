@@ -1115,7 +1115,12 @@ class Selector {
      * @return boolean
      */
     protected function _joinF(int $type, $table, callable $func) {
-        if (is_object($table)) {
+        if(is_array($table)){
+            $alias  = $table[1] ?? '';
+            $table  = $table[0];
+            $table = $table->needSelector();
+            $table->alias = $alias;
+        }else if (is_object($table)) {
             if ($table instanceof Selector) {
                 //nothing
             } else if ($table instanceof Table) {
