@@ -140,6 +140,122 @@ class MoonMedoo extends Medoo {
         return $this->exec('INSERT INTO ' . $this->tableQuote($table) . ' (' . implode(', ', $fields) . ') VALUES ' . implode(', ', $stack) . ' ON DUPLICATE KEY UPDATE ' . implode(', ', $update_fields), $map);
     }
 
+    /**
+     * join的时候，支持alias
+     * @override
+     */
+    protected function selectContext($table, &$map, $join, &$columns = null, $where = null, $column_fn = null) {
+        preg_match('/(?<table>[a-zA-Z0-9_]+)\s*\((?<alias>[a-zA-Z0-9_]+)\)/i', $table, $table_match);
+
+        $table_alias = '';
+
+        if (isset($table_match['table'], $table_match['alias'])) {
+            $table = $this->tableQuote($table_match['table']);
+            $table_alias = $this->tableQuote($table_match['alias']);
+            $table_query = $table . ' AS ' . $this->tableQuote($table_match['alias']);
+        } else {
+            $table = $this->tableQuote($table);
+
+            $table_query = $table;
+        }
+
+        $join_key = is_array($join) ? array_keys($join) : null;
+
+        if (
+            isset($join_key[0]) &&
+            strpos($join_key[0], '[') === 0
+        ) {
+            $table_join = [];
+
+            $join_array = [
+                '>'  => 'LEFT',
+                '<'  => 'RIGHT',
+                '<>' => 'FULL',
+                '><' => 'INNER'
+            ];
+
+            foreach ($join as $sub_table => $relation) {
+                preg_match('/(\[(?<join>\<\>?|\>\<?)\])?(?<table>[a-zA-Z0-9_]+)\s?(\((?<alias>[a-zA-Z0-9_]+)\))?/', $sub_table, $match);
+
+                if ($match['join'] !== '' && $match['table'] !== '') {
+                    if (is_string($relation)) {
+                        $relation = 'USING ("' . $relation . '")';
+                    }
+
+                    if (is_array($relation)) {
+                        // For ['column1', 'column2']
+                        if (isset($relation[0])) {
+                            $relation = 'USING ("' . implode($relation, '", "') . '")';
+                        } else {
+                            $joins = [];
+
+                            foreach ($relation as $key => $value) {
+                                $joins[] = (
+                                    strpos($key, '.') > 0 ?
+                                    // For ['tableB.column' => 'column']
+                                    $this->columnQuote($key) :
+                                    // For ['column1' => 'column2']
+                                    ((empty($table_alias) ? $table : $table_alias) . '."' . $key . '"')
+                                    ) .
+                                    ' = ' .
+                                    $this->tableQuote(isset($match['alias']) ? $match['alias'] : $match['table']) . '."' . $value . '"';
+                            }
+
+                            $relation = 'ON ' . implode($joins, ' AND ');
+                        }
+                    }
+
+                    $table_name = $this->tableQuote($match['table']) . ' ';
+
+                    if (isset($match['alias'])) {
+                        $table_name .= 'AS ' . $this->tableQuote($match['alias']) . ' ';
+                    }
+
+                    $table_join[] = $join_array[$match['join']] . ' JOIN ' . $table_name . $relation;
+                }
+            }
+
+            $table_query .= ' ' . implode($table_join, ' ');
+        } else {
+            if (is_null($columns)) {
+                if (
+                    !is_null($where) ||
+                    (is_array($join) && isset($column_fn))
+                ) {
+                    $where = $join;
+                    $columns = null;
+                } else {
+                    $where = null;
+                    $columns = $join;
+                }
+            } else {
+                $where = $columns;
+                $columns = $join;
+            }
+        }
+
+        if (isset($column_fn)) {
+            if ($column_fn === 1) {
+                $column = '1';
+
+                if (is_null($where)) {
+                    $where = $columns;
+                }
+            } else {
+                if (empty($columns) || $this->isRaw($columns)) {
+                    $columns = '*';
+                    $where = $join;
+                }
+
+                $column = $column_fn . '(' . $this->columnPush($columns, $map) . ')';
+            }
+        } else {
+            $column = $this->columnPush($columns, $map);
+        }
+
+        return 'SELECT ' . $column . ' FROM ' . $table_query . $this->whereClause($where, $map);
+    }
+
 }
 
 /**
@@ -384,7 +500,7 @@ interface Connection {
     public function rowCount(Selector $selector);
 
     public function insert(Selector ...$selectors);
-    
+
     public function insertUpdate(Selector $update_selector, Selector ...$selectors);
 
     public function update(Selector $selector);
@@ -566,7 +682,7 @@ class MedooConnection implements Connection {
         }
         return $this->medoo->id();
     }
-    
+
     /**
      * 删除数据
      * @param \Moon\Selector $selector
@@ -718,6 +834,9 @@ class Selector {
     protected $_values = [];    //更新或插入的数据列表
 
     public function __construct(string $table, string $alias = '') {
+        if (empty($alias)) {
+            $alias = 'this';
+        }
         $this->table = $table;
         $this->alias = $alias;
     }
@@ -796,8 +915,16 @@ class Selector {
      */
     public function where($k, $v = null): Selector {
         if (is_array($k)) {
+            foreach ($k as $n => $v) {
+                if (false === strpos($k, '.')) {
+                    
+                }
+            }
             $this->_conds = array_merge($this->_conds, $k);
         } else {
+            if (false === strpos($k, '.')) {
+                $k = $this->col($k);
+            }
             $this->_conds[$k] = $v;
         }
         return $this;
@@ -980,9 +1107,22 @@ class Selector {
         return $this;
     }
 
+    /**
+     * 关联查询
+     * @param int $type
+     * @param string|\Selector $table
+     * @param \Moon\callable $func
+     * @return boolean
+     */
     protected function _joinF(int $type, $table, callable $func) {
-        if (is_object($table) && ($table instanceof Selector)) {
-            
+        if (is_object($table)) {
+            if ($table instanceof Selector) {
+                //nothing
+            } else if ($table instanceof Table) {
+                $table = $table->needSelector();
+            } else {
+                return false;
+            }
         } else if (is_string($table)) {
             $alias = '';
             if (preg_match('/(\w+)\((\w+)\)?/', $table, $info)) {
@@ -992,6 +1132,9 @@ class Selector {
             $table = new self($table, $alias);
         } else {
             return false;
+        }
+        if ($table->alias == 'this') {
+            $table->alias = '';
         }
         $new_selector = new self($this->table, $this->alias);
         call_user_func($func, $new_selector);
@@ -1005,7 +1148,7 @@ class Selector {
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function join($table, callable $func): Selector {
+    public function join($table, callable $func) {
         return $this->_joinF(self::JOIN_INNER, $table, $func);
     }
 
@@ -1015,7 +1158,7 @@ class Selector {
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinLeft($table, callable $func): Selector {
+    public function joinLeft($table, callable $func) {
         return $this->_joinF(self::JOIN_LEFT, $table, $func);
     }
 
@@ -1025,7 +1168,7 @@ class Selector {
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinRight($table, callable $func): Selector {
+    public function joinRight($table, callable $func) {
         return $this->_joinF(self::JOIN_RIGHT, $table, $func);
     }
 
@@ -1035,7 +1178,7 @@ class Selector {
      * @param callable $func
      * @return \Moon\Selector
      */
-    public function joinFull($table, callable $func): Selector {
+    public function joinFull($table, callable $func) {
         return $this->_joinF(self::JOIN_FULL, $table, $func);
     }
 
@@ -1511,6 +1654,19 @@ class Model extends Table {
             return $this->_curdata;
         }
         return $this->_curdata[$column] ?? null;
+    }
+
+    /**
+     * 获取原始数据
+     * @param string $column
+     * @param mixed $def
+     * @return mixed
+     */
+    public function getMetaData(string $column = '', $def = null) {
+        if (empty($column)) {
+            return $this->_metadata;
+        }
+        return $this->_metadata[$column] ?? null;
     }
 
     /**
