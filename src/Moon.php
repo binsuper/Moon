@@ -916,11 +916,11 @@ class Selector {
     public function where($k, $v = null): Selector {
         if (is_array($k)) {
             foreach ($k as $n => $v) {
-                if (false === strpos($k, '.')) {
-                    
+                if (false === strpos($n, '.')) {
+                    $n = $this->col($n);
                 }
+                $this->_conds[$n] = $v;
             }
-            $this->_conds = array_merge($this->_conds, $k);
         } else {
             if (false === strpos($k, '.')) {
                 $k = $this->col($k);
