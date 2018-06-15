@@ -834,9 +834,6 @@ class Selector {
     protected $_values = [];    //更新或插入的数据列表
 
     public function __construct(string $table, string $alias = '') {
-        if (empty($alias)) {
-            $alias = 'this';
-        }
         $this->table = $table;
         $this->alias = $alias;
     }
@@ -915,16 +912,8 @@ class Selector {
      */
     public function where($k, $v = null): Selector {
         if (is_array($k)) {
-            foreach ($k as $n => $v) {
-                if (false === strpos($n, '.')) {
-                    $n = $this->col($n);
-                }
-                $this->_conds[$n] = $v;
-            }
+            $this->_conds = array_merge($this->_conds, $k);
         } else {
-            if (false === strpos($k, '.')) {
-                $k = $this->col($k);
-            }
             $this->_conds[$k] = $v;
         }
         return $this;
