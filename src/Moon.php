@@ -1104,12 +1104,12 @@ class Selector {
      * @return boolean
      */
     protected function _joinF(int $type, $table, callable $func) {
-        if(is_array($table)){
-            $alias  = $table[1] ?? '';
-            $table  = $table[0];
+        if (is_array($table)) {
+            $alias = $table[1] ?? '';
+            $table = $table[0];
             $table = $table->needSelector();
             $table->alias = $alias;
-        }else if (is_object($table)) {
+        } else if (is_object($table)) {
             if ($table instanceof Selector) {
                 //nothing
             } else if ($table instanceof Table) {
@@ -1564,6 +1564,17 @@ class Model extends Table {
         if (is_array($this->query_columns) && !$this->checkQueryColumn($this->primary_key)) {
             $this->query_columns[] = $this->primary_key;
         }
+    }
+
+    /**
+     * 通过数组参数初始化
+     * @param array $data
+     * @return self
+     */
+    public static function initBy(array $data): self {
+        $model = new self();
+        $model->_metadata = $data;
+        $model->_curdata = $data;
     }
 
     public function __set($name, $value) {
