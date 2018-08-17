@@ -1390,9 +1390,13 @@ class Selector {
 
 abstract class Table {
 
+    const CONN_TYPE_APPOINT = 0; //指定
+    const CONN_TYPE_WRITER = 1; //总是使用writer
+
     public $table;  //表明
     public $alias = '';  //别名
     protected $selector;
+    protected $alwaysUseConnType = self::CONN_TYPE_APPOINT;   //0=自动区分
 
     /**
      * @var \Moon\Moon 
@@ -1441,11 +1445,49 @@ abstract class Table {
     }
 
     /**
+     * 总是使用writer
+     * @return $this
+     */
+    public function alwaysWriter(){
+        $this->alwaysUseConnType = self::CONN_TYPE_WRITER;
+        return $this;
+    }
+    
+    /**
+     * 恢复主从连接的使用
+     * @return $this
+     */
+    public function recoverConnType(){
+        $this->alwaysUseConnType = self::CONN_TYPE_APPOINT;
+        return $this;
+    }
+    
+    /**
+     * @return \Moon\Connection
+     */
+    protected function _getInternalReader() {
+        if($this->alwaysUseConnType == self::CONN_TYPE_WRITER){
+            $conn = $this->_getInternalWriter();
+        }else{
+            $conn = $this->moon->getReader();
+        }
+        return $conn;
+    }
+
+    /**
+     * @return \Moon\Connection
+     */
+    protected function _getInternalWriter() {
+        $conn = $this->moon->getWriter();
+        return $conn;
+    }
+
+    /**
      * 获取第一条数据
      * @return array
      */
     public function first() {
-        $conn = $this->moon->getReader();
+        $conn = $this->_getInternalReader();
         if ($this->_debug) {
             $conn->debug();
             $this->_debug = false;
@@ -1461,7 +1503,7 @@ abstract class Table {
      * @return array
      */
     public function all() {
-        $conn = $this->moon->getReader();
+        $conn = $this->_getInternalReader();
         if ($this->_debug) {
             $conn->debug();
             $this->_debug = false;
@@ -1477,7 +1519,7 @@ abstract class Table {
      * @return int
      */
     public function insert() {
-        $conn = $this->moon->getWriter();
+        $conn = $this->_getInternalWriter();
         if ($this->_debug) {
             $conn->debug();
             $this->_debug = false;
@@ -1493,7 +1535,7 @@ abstract class Table {
      * @return int
      */
     public function update() {
-        $conn = $this->moon->getWriter();
+        $conn = $this->_getInternalWriter();
         if ($this->_debug) {
             $conn->debug();
             $this->_debug = false;
@@ -1509,7 +1551,7 @@ abstract class Table {
      * @return int
      */
     public function delete() {
-        $conn = $this->moon->getWriter();
+        $conn = $this->_getInternalWriter();
         if ($this->_debug) {
             $conn->debug();
             $this->_debug = false;
@@ -1521,7 +1563,7 @@ abstract class Table {
     }
 
     public function count() {
-        $conn = $this->moon->getReader();
+        $conn = $this->_getInternalReader();
         if ($this->_debug) {
             $conn->debug();
             $this->_debug = false;
@@ -1789,7 +1831,12 @@ class Model extends Table {
             $ret = $this->update();
         }
         if ($ret != false && $reload) {
+            //重载时默认使用writer
+            $old_type = $this->alwaysUseConnType;
+            $this->alwaysWriter();
             $this->reload();
+            $this->recoverConnType();
+            $this->alwaysUseConnType = $old_type;
         }
         return $ret;
     }
