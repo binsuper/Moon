@@ -1606,7 +1606,14 @@ class Model extends Table {
         if (is_array($this->query_columns) && !$this->checkQueryColumn($this->primary_key)) {
             $this->query_columns[] = $this->primary_key;
         }
+        
+        $this->__init();
     }
+    
+    /**
+     * 用户自定义的初始化函数
+     */
+    public function __init(){}
 
     /**
      * 通过数组参数初始化
