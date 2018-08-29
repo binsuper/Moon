@@ -466,7 +466,7 @@ class Moon {
             return false;
         }
         if (self::$_instance == null || self::$_instance == false) {
-            self::$_instance = new self(self::$global_options);
+            self::$_instance = new static(self::$global_options);
         }
         return self::$_instance;
     }
@@ -1034,7 +1034,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function WhereOr(callable $func): Selector {
-        $new_selector = new self($this->table, $this->alias);
+        $new_selector = new static($this->table, $this->alias);
         $func($new_selector);
         $conds = $new_selector->_conds;
         return $this->where('OR', $conds);
@@ -1046,7 +1046,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function WhereAnd(callable $func): Selector {
-        $new_selector = new self($this->table, $this->alias);
+        $new_selector = new static($this->table, $this->alias);
         $func($new_selector);
         $conds = $new_selector->_conds;
         return $this->where('AND', $conds);
@@ -1123,14 +1123,14 @@ class Selector {
                 $table = $info[1];
                 $alias = $info[2] ?? '';
             }
-            $table = new self($table, $alias);
+            $table = new static($table, $alias);
         } else {
             return false;
         }
         if ($table->alias == 'this') {
             $table->alias = '';
         }
-        $new_selector = new self($this->table, $this->alias);
+        $new_selector = new static($this->table, $this->alias);
         call_user_func($func, $new_selector);
         $where = $new_selector->_conds;
         return $this->_join($type, $table->tableName(), $where);
@@ -1196,7 +1196,7 @@ class Selector {
      * @return \Moon\Selector
      */
     public function having(callable $func): Selector {
-        $new_selector = new self($this->table, $this->alias);
+        $new_selector = new static($this->table, $this->alias);
         $func($new_selector);
         $having = $new_selector->_having;
         $this->_having = array_merge($this->_having, $having);
@@ -1621,7 +1621,7 @@ class Model extends Table {
      * @return self
      */
     public static function initBy(array $data): self {
-        $model = new self();
+        $model = new static();
         $model->_metadata = $data;
         $model->_curdata = $data;
     }
