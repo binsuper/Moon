@@ -1620,10 +1620,11 @@ class Model extends Table {
      * @param array $data
      * @return self
      */
-    public static function initBy(array $data): self {
+    public static function initBy(array $data) {
         $model = new static();
         $model->_metadata = $data;
         $model->_curdata = $data;
+        return $model;
     }
 
     public function __set($name, $value) {
