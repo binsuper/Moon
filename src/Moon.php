@@ -628,7 +628,7 @@ class MedooConnection implements Connection {
         if (empty($joins)) {
             $ret = $this->medoo->count($handle->tableName(), $handle->contextWhere());
         } else {
-            $ret = $this->medoo->count($handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
+            $ret = $this->medoo->count($handle->tableName(), $joins, '1', $handle->contextWhere());
         }
         if ($this->isError()) {
             return false;
