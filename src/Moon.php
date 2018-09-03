@@ -246,13 +246,14 @@ class MoonMedoo extends Medoo {
                     $columns = '*';
                     $where = $join;
                 }
-
+                if($columns === '1'){
+                    $columns = '*';
+                }
                 $column = $column_fn . '(' . $this->columnPush($columns, $map) . ')';
             }
         } else {
             $column = $this->columnPush($columns, $map);
         }
-
         return 'SELECT ' . $column . ' FROM ' . $table_query . $this->whereClause($where, $map);
     }
 
@@ -628,7 +629,7 @@ class MedooConnection implements Connection {
         if (empty($joins)) {
             $ret = $this->medoo->count($handle->tableName(), $handle->contextWhere());
         } else {
-            $ret = $this->medoo->count($handle->tableName(), $joins, '', $handle->contextWhere());
+            $ret = $this->medoo->count($handle->tableName(), $joins, '1', $handle->contextWhere());
         }
         if ($this->isError()) {
             return false;
