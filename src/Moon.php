@@ -246,7 +246,7 @@ class MoonMedoo extends Medoo {
                     $columns = '*';
                     $where = $join;
                 }
-                if($columns === '1'){
+                if ($columns === '1') {
                     $columns = '*';
                 }
                 $column = $column_fn . '(' . $this->columnPush($columns, $map) . ')';
@@ -1199,8 +1199,18 @@ class Selector {
     public function having(callable $func): Selector {
         $new_selector = new static($this->table, $this->alias);
         $func($new_selector);
-        $having = $new_selector->_having;
+        $having = $new_selector->_conds;
         $this->_having = array_merge($this->_having, $having);
+        return $this;
+    }
+
+    /**
+     * HAVING
+     * @param Raw $raw
+     * @return $this
+     */
+    public function havingRaw(Raw $raw) {
+        $this->_having = $raw;
         return $this;
     }
 
@@ -1320,7 +1330,7 @@ class Selector {
         if (count($this->_group) > 0) {
             $where['GROUP'] = $this->_group;
         }
-        if (count($this->_having) > 0) {
+        if (($this->_having instanceof Raw) || count($this->_having) > 0) {
             $where['HAVING'] = $this->_having;
         }
         if (count($this->_limit) > 0) {
@@ -1449,27 +1459,27 @@ abstract class Table {
      * 总是使用writer
      * @return $this
      */
-    public function alwaysWriter(){
+    public function alwaysWriter() {
         $this->alwaysUseConnType = self::CONN_TYPE_WRITER;
         return $this;
     }
-    
+
     /**
      * 恢复主从连接的使用
      * @return $this
      */
-    public function recoverConnType(){
+    public function recoverConnType() {
         $this->alwaysUseConnType = self::CONN_TYPE_APPOINT;
         return $this;
     }
-    
+
     /**
      * @return \Moon\Connection
      */
     protected function _getInternalReader() {
-        if($this->alwaysUseConnType == self::CONN_TYPE_WRITER){
+        if ($this->alwaysUseConnType == self::CONN_TYPE_WRITER) {
             $conn = $this->_getInternalWriter();
-        }else{
+        } else {
             $conn = $this->moon->getReader();
         }
         return $conn;
@@ -1607,14 +1617,16 @@ class Model extends Table {
         if (is_array($this->query_columns) && !$this->checkQueryColumn($this->primary_key)) {
             $this->query_columns[] = $this->primary_key;
         }
-        
+
         $this->__init();
     }
-    
+
     /**
      * 用户自定义的初始化函数
      */
-    public function __init(){}
+    public function __init() {
+        
+    }
 
     /**
      * 通过数组参数初始化
