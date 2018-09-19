@@ -873,7 +873,7 @@ class Selector {
     /**
      * 添加要查询的字段
      * @param string|array $c
-     * @return Selector
+     * @return $this
      */
     public function select($c, $alias = null): Selector {
         if (is_array($c)) {
@@ -899,7 +899,7 @@ class Selector {
     /**
      * 构造获取的结构
      * @param array $struct
-     * @return \Moon\Selector
+     * @return $this
      */
     public function selectStruct(array $struct): Selector {
         return $this->select($struct);
@@ -909,7 +909,7 @@ class Selector {
      * 添加查询条件
      * @param string|array $k
      * @param string|array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function where($k, $v = null): Selector {
         if (is_array($k)) {
@@ -924,7 +924,7 @@ class Selector {
      * 添加查询条件 - !=
      * @param string|array $k
      * @param string|array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereNot(string $k, $v): Selector {
         return $this->where($k . '[!]', $v);
@@ -934,7 +934,7 @@ class Selector {
      * 添加查询条件 - 大于
      * @param string $k
      * @param type $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereGT(string $k, $v): Selector {
         return $this->where($k . '[>]', $v);
@@ -944,7 +944,7 @@ class Selector {
      * 添加查询条件 - >大于等于
      * @param string $k
      * @param type $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereGE(string $k, $v): Selector {
         return $this->where($k . '[>=]', $v);
@@ -954,7 +954,7 @@ class Selector {
      * 添加查询条件 - 小于
      * @param string $k
      * @param type $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereLT(string $k, $v): Selector {
         return $this->where($k . '[<]', $v);
@@ -964,7 +964,7 @@ class Selector {
      * 添加查询条件 - 小于等于
      * @param string $k
      * @param type $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereLE(string $k, $v): Selector {
         return $this->where($k . '[<=]', $v);
@@ -974,7 +974,7 @@ class Selector {
      * 查询条件 - in
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereIn(string $k, array $v): Selector {
         return $this->where($k, $v);
@@ -984,7 +984,7 @@ class Selector {
      * 查询条件 - not in
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereNotIn(string $k, array $v): Selector {
         return $this->whereNot($k, $v);
@@ -993,7 +993,7 @@ class Selector {
     /**
      * 查询条件 - is null
      * @param string $k
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereNull(string $k): Selector {
         return $this->where($k, null);
@@ -1002,7 +1002,7 @@ class Selector {
     /**
      * 查询条件 - is not null
      * @param string $k
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereNotNull(string $k): Selector {
         return $this->whereNot($k, null);
@@ -1012,7 +1012,7 @@ class Selector {
      * 查询条件 - 介于两者之间
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereBetween(string $k, $v1, $v2): Selector {
         return $this->where($k . '[<>]', [$v, $v2]);
@@ -1023,7 +1023,7 @@ class Selector {
      * @param string $k
      * @param type $v1
      * @param type $v2
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereNotBetween(string $k, $v1, $v2): Selector {
         return $this->where($k . '[><]', [$v1, $v2]);
@@ -1032,7 +1032,7 @@ class Selector {
     /**
      * 查询条件 - or
      * @param callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function WhereOr(callable $func): Selector {
         $new_selector = new static($this->table, $this->alias);
@@ -1044,7 +1044,7 @@ class Selector {
     /**
      * 查询条件 - and
      * @param callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function WhereAnd(callable $func): Selector {
         $new_selector = new static($this->table, $this->alias);
@@ -1057,7 +1057,7 @@ class Selector {
      * 查询条件 - like
      * @param string $k
      * @param string $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereLike(string $k, string $v): Selector {
         return $this->where($k . '[~]', $v);
@@ -1067,7 +1067,7 @@ class Selector {
      * 查询条件 - not like
      * @param string $k
      * @param string $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereNotLike(string $k, string $v): Selector {
         return $this->where($k . '[!~]', $v);
@@ -1077,7 +1077,7 @@ class Selector {
      * 查询条件 - 系统函数
      * @param string $k
      * @param string $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function whereFunc(string $k, string $v): Selector {
         return $this->where($k, Moon::raw($v));
@@ -1088,7 +1088,7 @@ class Selector {
      * @param int $type
      * @param string $table
      * @param string|array $where
-     * @return \Moon\Selector
+     * @return $this
      */
     protected function _join(int $type, string $table, $where): Selector {
         $all_type = ['[>]' /* left joni */, '[<]' /* right join */, '[<>]' /* full join */, '[><]' /* inner join */];
@@ -1102,7 +1102,7 @@ class Selector {
      * @param int $type
      * @param string|\Selector $table
      * @param \Moon\callable $func
-     * @return boolean
+     * @return boolean|$this
      */
     protected function _joinF(int $type, $table, callable $func) {
         if (is_array($table)) {
@@ -1141,7 +1141,7 @@ class Selector {
      * 内连接
      * @param string $table
      * @param callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function join($table, callable $func) {
         return $this->_joinF(self::JOIN_INNER, $table, $func);
@@ -1151,7 +1151,7 @@ class Selector {
      * 左连接
      * @param string|\Moon\Selector $table
      * @param callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function joinLeft($table, callable $func) {
         return $this->_joinF(self::JOIN_LEFT, $table, $func);
@@ -1161,7 +1161,7 @@ class Selector {
      * 右连接
      * @param string|\Moon\Selector $table
      * @param callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function joinRight($table, callable $func) {
         return $this->_joinF(self::JOIN_RIGHT, $table, $func);
@@ -1171,7 +1171,7 @@ class Selector {
      * 外连接
      * @param string|\Moon\Selector $table
      * @param callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function joinFull($table, callable $func) {
         return $this->_joinF(self::JOIN_FULL, $table, $func);
@@ -1180,7 +1180,7 @@ class Selector {
     /**
      * 组合
      * @param string|array $groupBy
-     * @return \Moon\Selector
+     * @return $this
      */
     public function groupBy($groupBy): Selector {
         if (is_array($groupBy)) {
@@ -1194,7 +1194,7 @@ class Selector {
     /**
      * HAVING
      * @param \Moon\callable $func
-     * @return \Moon\Selector
+     * @return $this
      */
     public function having(callable $func): Selector {
         $new_selector = new static($this->table, $this->alias);
@@ -1217,14 +1217,14 @@ class Selector {
     /**
      * 排序
      * @param string $k
-     * @param string|array $v
-     * @return \Moon\Selector
+     * @param string|array $sort
+     * @return $this
      */
-    public function orderBy(string $k, $v = 'ASC'): Selector {
+    public function orderBy(string $k, $sort = 'ASC'): Selector {
         if (is_array($k)) {
             $this->_order = array_merge($this->_order, $k);
         } else {
-            $this->_order[$k] = strtoupper($v);
+            $this->_order[$k] = strtoupper($sort);
         }
         return $this;
     }
@@ -1233,7 +1233,7 @@ class Selector {
      * limit
      * @param int $offset
      * @param int $len
-     * @return \Moon\Selector
+     * @return $this
      */
     public function limit(int $offset, int $len = 0): Selector {
         $this->_limit = [];
@@ -1250,7 +1250,7 @@ class Selector {
      * 
      * @param string|array $k
      * @param mixed $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function value($k, $v = null): Selector {
         if (is_array($k)) {
@@ -1265,7 +1265,7 @@ class Selector {
      * 
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function valueJson(string $k, array $v): Selector {
         return $this->value($k . '[JSON]', $v);
@@ -1275,7 +1275,7 @@ class Selector {
      * 
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function valueAdd(string $k, $v): Selector {
         return $this->value($k . '[+]', $v);
@@ -1285,7 +1285,7 @@ class Selector {
      * 
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function valueSub(string $k, $v): Selector {
         return $this->value($k . '[-]', $v);
@@ -1295,7 +1295,7 @@ class Selector {
      * 
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function valueMul(string $k, $v): Selector {
         return $this->value($k . '[*]', $v);
@@ -1305,7 +1305,7 @@ class Selector {
      * 
      * @param string $k
      * @param array $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function valueDiv(string $k, $v): Selector {
         return $this->value($k . '[/]', $v);
@@ -1315,7 +1315,7 @@ class Selector {
      * 
      * @param string $k
      * @param string $v
-     * @return \Moon\Selector
+     * @return $this
      */
     public function valueFunc(string $k, string $v): Selector {
         return $this->value($k, Moon::raw($v));
@@ -1399,6 +1399,49 @@ class Selector {
 
 }
 
+/**
+ * @method $this select(string|array $c, string $alias=null) 添加要查询的字段
+ * @method $this selectStruct(array $c) 构造获取的结构
+ * @method $this where(string|array $k, string|array $v=null) 添加查询条件
+ * @method $this whereNot(string $k, string $v) 添加查询条件 - 不等于
+ * @method $this whereGT(string $k, string $v) 添加查询条件 - 大于
+ * @method $this whereGE(string $k, string $v) 添加查询条件 - 大于等于
+ * @method $this whereLT(string $k, string $v) 添加查询条件 - 小于
+ * @method $this whereLE(string $k, string $v) 添加查询条件 - 小于等于
+ * @method $this whereIn(string $k, array $v) 添加查询条件 - in
+ * @method $this whereNotIn(string $k, array $v) 添加查询条件 - not in
+ * @method $this whereNull(string $k) 添加查询条件 - is null
+ * @method $this whereNotNull(string $k) 添加查询条件 - is not null
+ * @method $this whereBetween(string $k, $v1, $v2) 添加查询条件 - 介于两者之间
+ * @method $this whereNotBetween(string $k, $v1, $v2) 添加查询条件 - 不在两者之间
+ * @method $this WhereOr(callable $func) 添加查询条件 - or
+ * @method $this WhereAnd(callable $func) 添加查询条件 - and
+ * @method $this whereLike(string $k, string $v) 添加查询条件 - like
+ * @method $this whereNotLike(string $k, string $v) 添加查询条件 - not like
+ * @method $this whereFunc(string $k, string $v) 添加查询条件 - 系统函数(raw形式)
+ * 
+ * @method $this join(string|array|Table $table, callable $func) 联表查询 - inner join
+ * @method $this joinLeft(string|array|Table $table, callable $func) 联表查询 - left join
+ * @method $this joinRight(string|array|Table $table, callable $func) 联表查询 - right join
+ * @method $this joinFull(string|array|Table $table, callable $func) 联表查询 - OUTER join
+ * 
+ * @method $this groupBy(string|array $groupBy) 组合
+ * @method $this orderBy(string|array $k, string $sort = 'ASC') 排序
+ * @method $this having(callable $func) Having
+ * @method $this havingRaw(Raw $raw) Having
+ * @method $this limit(int $offset, int $len = 0) limit
+ * 
+ * @method $this value(string|value $k, $v = null) 修改数据
+ * @method $this valueJson(string $k, array $v) 修改数据 - json格式
+ * @method $this valueAdd(string $k, int $v) 修改数据 - 自加
+ * @method $this valueSub(string $k, int $v) 修改数据 - 自减
+ * @method $this valueMul(string $k, int $v) 修改数据 - 自乘
+ * @method $this valueDiv(string $k, int $v) 修改数据 - 自除
+ * @method $this valueFunc(string $k, string $v) 修改数据 - raw
+ * 
+ * @method string tableName(bool $bAlias = true) 表名称
+ * @method string col(string $col_name) 返回列名
+ */
 abstract class Table {
 
     const CONN_TYPE_APPOINT = 0; //指定
