@@ -1397,6 +1397,16 @@ class Selector {
         return $this->alias . '.' . $col_name;
     }
 
+    /**
+     * 设置别名
+     * @param string $alias
+     * @return $this
+     */
+    public function setAlias(string $alias) {
+        $this->alias = $alias;
+        return $this;
+    }
+
 }
 
 /**
@@ -1441,6 +1451,7 @@ class Selector {
  * 
  * @method string tableName(bool $bAlias = true) 表名称
  * @method string col(string $col_name) 返回列名
+ * @method $this setAlias(string $alias) 设置别名
  */
 abstract class Table {
 
