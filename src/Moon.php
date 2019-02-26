@@ -6,6 +6,7 @@
 
 namespace Moon;
 
+use PDO;
 use Medoo\{
     Medoo,
     Raw
@@ -270,6 +271,47 @@ class MoonMedoo extends Medoo {
             $last_idx = $cnt;
         }
         return parent::last();
+    }
+
+    /**
+     * 
+     * @param callable $callback
+     * @param string $table
+     * @param array $join
+     * @param array $columns
+     * @param array $where
+     * @return boolean|int 返回查询的行数
+     */
+    public function selectEach($callback, $table, $join, $columns = null, $where = null) {
+        $map = [];
+        $column_map = [];
+        $index = 0;
+        $query = $this->exec($this->selectContext($table, $map, $join, $columns, $where), $map);
+        $this->columnMap($columns, $column_map);
+        if (!$query) {
+            return false;
+        }
+        $use_data_map = false;
+        if (is_array($columns)) {
+            $use_data_map = true;
+        }
+        while ($data = $query->fetch(PDO::FETCH_ASSOC)) {
+            $index++;
+            $current_stack = [];
+            if ($use_data_map) {
+                $this->dataMap($data, $columns, $column_map, $current_stack);
+            } else {
+                $current_stack = $data;
+            }
+            if (false === call_user_func($callback, $current_stack)) {
+                break;
+            }
+        }
+        if ($query instanceof \PDOStatement) {
+            $query->closeCursor();
+        }
+
+        return $index;
     }
 
 }
@@ -543,6 +585,15 @@ interface Connection {
     public function fetchAll(Selector $selector);
 
     /**
+     * 每次查询一条记录，并以传参的方式传入到回调函数$callback中
+     * 这个操作对于大数据查询是安全有效的
+     * @param \Moon\Selector $selector
+     * @param callable $callback 回调函数，当且仅当返回false时将结束DB查询
+     * @return int 返回已查询的行数
+     */
+    public function fetchRow(Selector $selector, $callback);
+
+    /**
      * 获取行数
      * @param \Moon\Selector $selector
      * @return int
@@ -716,6 +767,27 @@ class MedooConnection implements Connection {
         }
         if (is_array($ret)) {
             return new Collection($ret);
+        }
+        return $ret;
+    }
+
+    /**
+     * 每次查询一条记录，并以传参的方式传入到回调函数$callback中
+     * 这个操作对于大数据查询是安全有效的
+     * @param \Moon\Selector $selector
+     * @param callable $callback 回调函数，当且仅当返回false时将结束DB查询
+     * @return bool|int 返回已查询的行数
+     */
+    public function fetchRow(Selector $selector, $callback) {
+        $handle = $selector;
+        $joins = $handle->contextJoin();
+        if (empty($joins)) {
+            $ret = $this->medoo->selectEach($callback, $handle->tableName(), $handle->contextColumn(), $handle->contextWhere());
+        } else {
+            $ret = $this->medoo->selectEach($callback, $handle->tableName(), $joins, $handle->contextColumn(), $handle->contextWhere());
+        }
+        if ($this->isError()) {
+            return false;
         }
         return $ret;
     }
@@ -1873,6 +1945,24 @@ abstract class Table {
         return $ret;
     }
 
+    /**
+     * 每次查询一条记录，并以传参的方式传入到回调函数$callback中
+     * 这个操作对于大数据查询是安全有效的
+     * @param callable $callback
+     * @return bool|int
+     */
+    public function each($callback) {
+        $conn = $this->_getInternalReader();
+        if ($this->_debug) {
+            $conn->debug();
+            $this->_debug = false;
+        }
+        $selector = $this->needSelector();
+        $ret = $conn->fetchRow($selector, $callback);
+        $selector->clear();
+        return $ret;
+    }
+
 }
 
 /**
@@ -2077,6 +2167,18 @@ class Model extends Table {
             $this->needSelector()->select($this->query_columns);
         }
         return parent::all();
+    }
+
+    /**
+     * 每次查询一条记录，并以传参的方式传入到回调函数$callback中
+     * 这个操作对于大数据查询是安全有效的
+     * @param callable $callback
+     */
+    public function each($callback) {
+        if (is_array($this->query_columns)) {
+            $this->needSelector()->select($this->query_columns);
+        }
+        return parent::each($callback);
     }
 
     /**
