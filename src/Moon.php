@@ -1321,10 +1321,11 @@ class Selector {
      * @return $this
      */
     public function WhereOr(callable $func): Selector {
+        static $id = 0;
         $new_selector = new static($this->table, $this->alias);
         $func($new_selector);
         $conds = $new_selector->_conds;
-        return $this->where('OR', $conds);
+        return $this->where('OR #' . ($id++), $conds);
     }
 
     /**
@@ -1333,10 +1334,11 @@ class Selector {
      * @return $this
      */
     public function WhereAnd(callable $func): Selector {
+        static $id = 0;
         $new_selector = new static($this->table, $this->alias);
         $func($new_selector);
         $conds = $new_selector->_conds;
-        return $this->where('AND', $conds);
+        return $this->where('AND #' . ($id++), $conds);
     }
 
     /**
