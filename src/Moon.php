@@ -403,10 +403,12 @@ class Moon {
      * 执行事务
      * $action函数有且仅有一个入参，类型为(\Moon\Connection)
      * @param callable $action 事务函数
+     * @param callable $succ 事务执行成功后的回调函数
+     * @param callable $failed 事务执行失败后的回调函数
      * @return mixed
      */
-    public static function doTrans(callable $action) {
-        return static::instance()->transaction($action);
+    public static function doTrans(callable $action, $succ = null, $failed = null) {
+        return static::instance()->transaction($action, $succ, $failed);
     }
 
     /**
@@ -501,11 +503,13 @@ class Moon {
      * 执行事务
      * $action函数有且仅有一个入参，类型为(\Moon\Connection)
      * @param callable $action 事务函数
+     * @param callable $succ 事务执行成功后的回调函数
+     * @param callable $failed 事务执行失败后的回调函数
      * @return mixed
      */
-    public function transaction(callable $action) {
+    public function transaction(callable $action, $succ = null, $failed = null) {
         $this->bInTrans = true;
-        $ret = $this->getWriter()->transaction($action);
+        $ret = $this->getWriter()->transaction($action, $succ, $failed);
         $this->bInTrans = false;
         return $ret;
     }
@@ -628,11 +632,12 @@ interface Connection {
 
     /**
      * 事务嵌套处理
-     * @param \Moon\callable $action
+     * @param callable $action 事务处理函数
+     * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
      * @return boolean
      * @throws \Moon\Exception
      */
-    public function transaction(callable $action);
+    public function transaction(callable $action, $callback = null);
 
     /**
      * 查询sql
@@ -685,6 +690,7 @@ class MedooConnection implements Connection {
     public $medoo;
     protected $pdo;
     public $prefix = '';
+    private $__trans_callback_action = [];
 
     public function __construct(array $options) {
         $this->option = $options;
@@ -898,26 +904,68 @@ class MedooConnection implements Connection {
 
     /**
      * 事务嵌套处理
-     * @param \Moon\callable $action
+     * @param callable $action 事务处理函数
+     * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
      * @return boolean
      * @throws \Moon\Exception
      */
-    public function transaction(callable $action) {
+    public function transaction(callable $action, $callback = null) {
         if (is_callable($action)) {
             if ($this->medoo->pdo->inTransaction()) {
                 //事务嵌套
-                $result = $action($this);
+                $result = call_user_func($action, $this);
+                //记录处理函数
+                if (is_callable($callback)) {
+                    $this->__trans_callback_action[] = $succ;
+                }
             } else {
+                //开启事务前将处理函数清空
+                $this->__trans_callback_action = [];
+                //记录处理函数
+                if (is_callable($callback)) {
+                    $this->__trans_callback_action[] = $succ;
+                }
+
+                //开启事务
                 $this->medoo->pdo->beginTransaction();
                 try {
-                    $result = $action($this);
+                    $result = call_user_func($action, $this);
                     if ($result === false) {
                         $this->medoo->pdo->rollBack();
+                        //执行函数
+                        if (!empty($this->__trans_callback_action)) {
+                            foreach ($this->__trans_callback_action as $callable) {
+                                try {
+                                    call_user_func($callable, false);
+                                } catch (\Throwable $ex) {
+                                    //丢弃异常
+                                }
+                            }
+                        }
                     } else {
                         $this->medoo->pdo->commit();
+                        //执行函数
+                        if (!empty($this->__trans_callback_action)) {
+                            foreach ($this->__trans_callback_action as $callable) {
+                                try {
+                                    call_user_func($callable, true);
+                                } catch (\Throwable $ex) {
+                                    //丢弃异常
+                                }
+                            }
+                        }
                     }
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     $this->medoo->pdo->rollBack();
+                    if (!empty($this->__trans_callback_action)) {
+                        foreach ($this->__trans_callback_action as $callable) {
+                            try {
+                                call_user_func($callable, false);
+                            } catch (\Throwable $ex) {
+                                //丢弃异常
+                            }
+                        }
+                    }
                     throw $e;
                 }
             }
