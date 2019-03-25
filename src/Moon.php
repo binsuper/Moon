@@ -403,12 +403,11 @@ class Moon {
      * 执行事务
      * $action函数有且仅有一个入参，类型为(\Moon\Connection)
      * @param callable $action 事务函数
-     * @param callable $succ 事务执行成功后的回调函数
-     * @param callable $failed 事务执行失败后的回调函数
+     * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
      * @return mixed
      */
-    public static function doTrans(callable $action, $succ = null, $failed = null) {
-        return static::instance()->transaction($action, $succ, $failed);
+    public static function doTrans(callable $action, $callback = null) {
+        return static::instance()->transaction($action, $callback);
     }
 
     /**
@@ -915,14 +914,14 @@ class MedooConnection implements Connection {
                 $result = call_user_func($action, $this);
                 //记录处理函数
                 if (is_callable($callback)) {
-                    $this->__trans_callback_action[] = $succ;
+                    array_unshift($this->__trans_callback_action, $callback);
                 }
             } else {
                 //开启事务前将处理函数清空
                 $this->__trans_callback_action = [];
                 //记录处理函数
                 if (is_callable($callback)) {
-                    $this->__trans_callback_action[] = $succ;
+                    array_unshift($this->__trans_callback_action, $callback);
                 }
 
                 //开启事务
