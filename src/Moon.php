@@ -503,13 +503,12 @@ class Moon {
      * 执行事务
      * $action函数有且仅有一个入参，类型为(\Moon\Connection)
      * @param callable $action 事务函数
-     * @param callable $succ 事务执行成功后的回调函数
-     * @param callable $failed 事务执行失败后的回调函数
+     * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
      * @return mixed
      */
-    public function transaction(callable $action, $succ = null, $failed = null) {
+    public function transaction(callable $action, $callback = null) {
         $this->bInTrans = true;
-        $ret = $this->getWriter()->transaction($action, $succ, $failed);
+        $ret = $this->getWriter()->transaction($action, $callback);
         $this->bInTrans = false;
         return $ret;
     }
