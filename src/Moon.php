@@ -1343,18 +1343,19 @@ class Selector {
     /**
      * 查询条件 - 介于两者之间
      * @param string $k
-     * @param array $v
+     * @param mixed $v1
+     * @param mixed $v2
      * @return $this
      */
     public function whereBetween(string $k, $v1, $v2): Selector {
-        return $this->where($k . '[<>]', [$v, $v2]);
+        return $this->where($k . '[<>]', [$v1, $v2]);
     }
 
     /**
      * 查询条件 - 在两者之外
      * @param string $k
-     * @param type $v1
-     * @param type $v2
+     * @param mixed $v1
+     * @param mixed $v2
      * @return $this
      */
     public function whereNotBetween(string $k, $v1, $v2): Selector {
