@@ -1551,12 +1551,15 @@ class Selector {
 
     /**
      * 排序
-     * @param string $k
+     * @param string|array $k
      * @param string|array $sort
      * @return $this
      */
-    public function orderBy(string $k, $sort = 'ASC'): Selector {
+    public function orderBy($k, $sort = 'ASC'): Selector {
         if (is_array($k)) {
+            array_walk($k, function(&$item){
+                $item = strtoupper($item);
+            });
             $this->_order = array_merge($this->_order, $k);
         } else {
             $this->_order[$k] = strtoupper($sort);
@@ -1916,7 +1919,7 @@ abstract class Table {
 
     /**
      * 获取符合条件的数据
-     * @return array
+     * @return \Moon\Collection
      */
     public function all() {
         $conn = $this->_getInternalReader();
