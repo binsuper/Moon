@@ -7,14 +7,14 @@
             "email": "binsuper@126.com"
         }
     ],
-    "license": "MIT",  
+    "license": "MIT",
     "require": {
-        "php": ">=7.0.0",
-        "catfan/medoo": "~1.6.0"
+        "php": ">=7.4.0",
+        "ext-pdo": "*"
     },
     "autoload": {
         "psr-4": {
-            "Moon\\": "/src"
+            "Moon\\": "./src"
         }
     }
 }
