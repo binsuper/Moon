@@ -3,6 +3,7 @@
 namespace Moon\Core\DB;
 
 use Moon\Core\Error\InvalidArgumentException;
+use Moon\Helper\Utils;
 
 class Selector {
 
@@ -37,6 +38,18 @@ class Selector {
     const COND_AND    = '&&';   // 条件之间的关系 - 且
     const COND_OR     = '||';   // 条件之间的关系 - 或
 
+    // 排序
+    const ORDER_ASC  = 'asc';   // 升序
+    const ORDER_DESC = 'desc';  // 降序
+
+    // 数据操作类型
+    const VALUE_TYPE_SET  = '=';    // 设置
+    const VALUE_TYPE_ADD  = '+';    // 增加
+    const VALUE_TYPE_SUB  = '-';    // 减少
+    const VALUE_TYPE_MUL  = '*';    // 乘积
+    const VALUE_TYPE_DIV  = '/';    // 相除
+    const VALUE_TYPE_JSON = 'JSON'; // JSON
+
     protected string $_table;  //表名
     protected string $_alias;  //别名
 
@@ -47,7 +60,8 @@ class Selector {
     protected array $_group = [];
     protected array $_having = [];
     protected array $_limit = [];
-    protected array $_values = [];    //更新或插入的数据列表
+    protected array $_values = [];          //更新或插入的数据列表
+    protected array $_multi_values = [];    // 批量插入或更新的数据列表
 
     /**
      * 检索列与类型的对应关系
@@ -98,6 +112,12 @@ class Selector {
             foreach ($field as $key => $val) {
                 $this->_conds[] = [$op, $key, $val];
             }
+        } else if ($field instanceof Raw) {
+            if (is_null($dest)) {
+                $this->_conds[] = [$op, null, $field];
+            } else {
+                $this->_conds[] = [$op, $field, $dest];
+            }
         } else {
             $this->_conds[] = [$op, $field, $dest];
         }
@@ -106,6 +126,7 @@ class Selector {
 
     /**
      * 查询条件 - 相等
+     * 支持子查询
      * @param string|array|Raw $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -116,6 +137,7 @@ class Selector {
 
     /**
      * 查询条件 - 不相等
+     * 支持子查询
      * @param string|array|Raw $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -126,6 +148,7 @@ class Selector {
 
     /**
      * 查询条件 - 小于
+     * 支持子查询
      * @param string|array|Raw $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -136,6 +159,7 @@ class Selector {
 
     /**
      * 查询条件 - 小于等于
+     * 支持子查询
      * @param string|array|Raw $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -146,6 +170,7 @@ class Selector {
 
     /**
      * 查询条件 - 大于
+     * 支持子查询
      * @param string|array|Raw $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -156,6 +181,7 @@ class Selector {
 
     /**
      * 查询条件 - 大于等于
+     * 支持子查询
      * @param string|array|Raw $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -166,6 +192,7 @@ class Selector {
 
     /**
      * 查询条件 - 相似
+     * 支持子查询
      * @param string|array $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -176,6 +203,7 @@ class Selector {
 
     /**
      * 查询条件 - 不相似
+     * 支持子查询
      * @param string|array $col
      * @param mixed|static|Raw $val
      * @return $this
@@ -186,6 +214,7 @@ class Selector {
 
     /**
      * 查询条件 - 在列表中
+     * 支持子查询
      * @param string $col
      * @param array|static|Raw $val
      * @return $this
@@ -196,6 +225,7 @@ class Selector {
 
     /**
      * 查询条件 - 不在列表中
+     * 支持子查询
      * @param string $col
      * @param array|static|Raw $val
      * @return $this
@@ -311,7 +341,7 @@ class Selector {
      * @throws InvalidArgumentException
      */
     protected function _column($col, ?string $alias = null): self {
-        if ($col instanceof Raw) {
+        if ($col instanceof Raw || $col instanceof self) {
 
             if ($alias) {
                 $this->_columns[$alias] = $col;
@@ -362,7 +392,7 @@ class Selector {
      * @throws InvalidArgumentException
      */
     public function columnSubquery(Selector $selector, string $alias): self {
-        return $this->_column(Raw::column($selector), $alias);
+        return $this->_column($selector, $alias);
     }
 
     /**
@@ -383,9 +413,9 @@ class Selector {
      * @param int $type 类型
      * @param string|static $table 表明
      * @param array $on 条件
-     * @return Selector
+     * @return $this
      */
-    protected function _join(int $type, $table, array $on) {
+    protected function _join(int $type, $table, array $on): self {
 
         $alias = '';
 
@@ -401,6 +431,8 @@ class Selector {
             $alias = $table->aliasName();
             $table = $table->tableName();
 
+        } else {
+            throw new InvalidArgumentException(Utils::concat('arguments #2 must be string or object instanceof Selector, ', Utils::typeof($table), ' given'));
         }
 
         $this->_joins[] = [$type, $table, $alias, $on];
@@ -413,9 +445,9 @@ class Selector {
      * 内联查询
      * @param string|static $table 表名
      * @param array $on 条件，格式['join col'=>'other col']
-     * @return Selector
+     * @return $this
      */
-    public function join($table, array $on) {
+    public function join($table, array $on): self {
         return $this->_join(self::JOIN_INNER, $table, $on);
     }
 
@@ -423,9 +455,9 @@ class Selector {
      * 左联查询
      * @param string|static $table 表名
      * @param array $on 条件，格式['join col'=>'other col']
-     * @return Selector
+     * @return $this
      */
-    public function joinLeft($table, array $on) {
+    public function joinLeft($table, array $on): self {
         return $this->_join(self::JOIN_LEFT, $table, $on);
     }
 
@@ -433,9 +465,9 @@ class Selector {
      * 右联查询
      * @param string|static $table 表名
      * @param array $on 条件，格式['join col'=>'other col']
-     * @return Selector
+     * @return $this
      */
-    public function joinRight($table, array $on) {
+    public function joinRight($table, array $on): self {
         return $this->_join(self::JOIN_RIGHT, $table, $on);
     }
 
@@ -443,10 +475,188 @@ class Selector {
      * 外联查询
      * @param string|static $table 表名
      * @param array $on 条件，格式['join col'=>'other col']
-     * @return Selector
+     * @return $this
      */
-    public function joinFull($table, array $on) {
+    public function joinFull($table, array $on): self {
         return $this->_join(self::JOIN_FULL, $table, $on);
+    }
+
+    /**
+     * 组合查询
+     * @param array|string|Raw $field
+     * @return $this
+     */
+    public function group($field): self {
+        if (is_array($field)) {
+            $this->_group = array_merge($this->_group, $field);
+        } else {
+            $this->_group[] = $field;
+        }
+        return $this;
+    }
+
+    /**
+     * 聚合查询
+     * 内部数据与where保持一致
+     * @param Raw|callable $val 函数接受一个参数，类型为Selector或其子类
+     * @return $this
+     */
+    public function having($val): self {
+
+        if (is_callable($val)) {
+
+            $new_selector = new static($this->_table, $this->_alias);
+            call_user_func($val, $new_selector);
+            if (empty($new_selector->_conds)) {
+                return $this;
+            }
+            $this->_having = array_merge($this->_having, $new_selector->_conds);
+
+        } else if ($val instanceof Raw) {
+
+            $new_selector = new static($this->_table, $this->_alias);
+            $new_selector->where($val);
+            if (empty($new_selector->_conds)) {
+                return $this;
+            }
+            $this->_having = array_merge($this->_having, $new_selector->_conds);
+
+        }
+
+        return $this;
+    }
+
+    /**
+     * 排序
+     * @param string|array|Raw $col
+     * @param string $rule
+     * @return $this
+     */
+    protected function _order($col, string $rule): self {
+
+        if (is_string($col)) {
+
+            $this->_order[$rule][] = $col;
+
+        } else if (is_array($col)) {
+
+            foreach ($col as $item) {
+                $this->_order[$rule][] = $item;
+            }
+
+        }
+
+        return $this;
+    }
+
+    /**
+     * 升序排序
+     * @param string|array $col
+     * @return $this
+     */
+    public function orderAsc($col): self {
+        return $this->_order($col, self::ORDER_ASC);
+    }
+
+    /**
+     * 降序排序
+     * @param string|array $col
+     * @return $this
+     */
+    public function orderDesc($col): self {
+        return $this->_order($col, self::ORDER_DESC);
+    }
+
+    /**
+     * 设置插入或更新数据
+     * @param string $col 字段名
+     * @param mixed|Raw|static $val 数据
+     * @param string|null $type 类型
+     * @return $this
+     */
+    protected function _value(string $col, $val, ?string $type = null): self {
+        $this->_values[$col] = [$val, $type];
+        return $this;
+    }
+
+    /**
+     * 数据 - 设置
+     * @param string $col
+     * @param mixed|Raw|static $val
+     * @return $this
+     */
+    public function value(string $col, $val): self {
+        return $this->_value($col, $val, self::VALUE_TYPE_SET);
+    }
+
+    /**
+     * 数据 - 增加
+     * @param string $col
+     * @param mixed|Raw|static $val
+     * @return $this
+     */
+    public function valueAdd(string $col, float $val): self {
+        return $this->_value($col, $val, self::VALUE_TYPE_ADD);
+    }
+
+    /**
+     * 数据 - 减少
+     * @param string $col
+     * @param mixed|Raw|static $val
+     * @return $this
+     */
+    public function valueSub(string $col, float $val): self {
+        return $this->_value($col, $val, self::VALUE_TYPE_SUB);
+    }
+
+    /**
+     * 数据 - 乘积
+     * @param string $col
+     * @param mixed|Raw|static $val
+     * @return $this
+     */
+    public function valueMul(string $col, float $val): self {
+        return $this->_value($col, $val, self::VALUE_TYPE_MUL);
+    }
+
+    /**
+     * 数据 - 相除
+     * @param string $col
+     * @param mixed|Raw|static $val
+     * @return $this
+     */
+    public function valueDiv(string $col, float $val): self {
+        return $this->_value($col, $val, self::VALUE_TYPE_DIV);
+    }
+
+    /**
+     * 设置为json格式数据
+     * @param string $col
+     * @param mixed|Raw|static $val
+     * @return $this
+     */
+    public function valueJson(string $col, $val): self {
+        return $this->_value($col, $val, self::VALUE_TYPE_JSON);
+    }
+
+    /**
+     * 将当前已设置的value数据增加到multi列表中，并置空value.
+     * 这将会影响contextValue函数返回的数据结构.
+     * @return $this
+     */
+    public function multiValue(): self {
+        if (!empty($this->_values)) {
+            $this->_multi_values[] = $this->_values;
+            $this->_values = [];
+        }
+        return $this;
+    }
+
+    /**
+     * @return bool
+     */
+    public function isMulti(): bool {
+        return !empty($this->_multi_values);
     }
 
     /**
@@ -473,23 +683,24 @@ class Selector {
     public function contextWhere(): array {
         $where = [];
         if (!empty($this->_conds)) {
-            $where['where'] = $this->_conds;
+            $where['WHERE'] = $this->_conds;
         }
-        /*if (count($this->_group) > 0) {
+        if (count($this->_group)) {
             $where['GROUP'] = $this->_group;
         }
-        if (($this->_having instanceof Raw) || count($this->_having) > 0) {
+        if (count($this->_having)) {
             $where['HAVING'] = $this->_having;
         }
+        if (count($this->_order)) {
+            $where['ORDER'] = $this->_order;
+        }
+        /*
         if (count($this->_limit) > 0) {
             if (!isset($this->_limit[1])) {
                 $where['LIMIT'] = $this->_limit[0];
             } else {
                 $where['LIMIT'] = $this->_limit;
             }
-        }
-        if (count($this->_order) > 0) {
-            $where['ORDER'] = $this->_order;
         }
         */
         return $where;
@@ -505,9 +716,9 @@ class Selector {
      *      'base' => ['D', 'E']    //structs
      * ]
      *
-     * @return array|string
+     * @return array
      */
-    public function contextColumn() {
+    public function contextColumn(): array {
         // ['uername' => 'name']
         // [ ['a' => ['name', '']] ]
         // [ Raw, 'a' => 'b', [], 'c' ]
@@ -531,9 +742,17 @@ class Selector {
     }
 
     /**
+     * 格式：
+     * [
+     *      field => [value, data_type]
+     * ]
+     *
      * @return array
      */
     public function contextValue(): array {
+        if ($this->isMulti()) {
+            return $this->_multi_values;
+        }
         return $this->_values;
     }
 

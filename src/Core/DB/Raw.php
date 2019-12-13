@@ -30,18 +30,5 @@ class Raw {
         return $this->_map;
     }
 
-    /**
-     * 自定义column字段
-     * @param string|Selector $col
-     * @return static
-     * @throws InvalidArgumentException
-     */
-    public static function column($col): self {
-        if (!is_string($col) && !($col instanceof Selector)) {
-            throw new InvalidArgumentException('column type must be string or object<Selector>, ' . InvalidArgumentException::getType($col) . ' given');
-        }
-
-        return new static($col);
-    }
 
 }

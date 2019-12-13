@@ -2,10 +2,11 @@
 
 namespace Moon\Driver\PDO\Mysql;
 
+use PDO;
 use Moon\Core\DB\Raw;
 use Moon\Core\DB\Selector;
 use Moon\Core\Error\InvalidArgumentException;
-use PDO;
+use Moon\Helper\Utils;
 
 class Constructor {
 
@@ -23,7 +24,13 @@ class Constructor {
         Selector::COND_NBTW   => 'not between', // 大于等于
         Selector::COND_AND    => 'and',         // 且
         Selector::COND_OR     => 'or',          // 或
-        Selector::COND_REGEXP => 'REGEXP',      //  正则
+        Selector::COND_REGEXP => 'REGEXP',      // 正则
+        Selector::JOIN_INNER  => 'inner join',  // 内联
+        Selector::JOIN_LEFT   => 'left join',   // 左联
+        Selector::JOIN_RIGHT  => 'right join',  // 右联
+        Selector::JOIN_FULL   => 'outer join',  // 外联
+        Selector::ORDER_ASC   => 'asc',         // 右联
+        Selector::ORDER_DESC  => 'desc',        // 外联
     ];
 
     // php数据类型与PDO数据类型的映射关系
@@ -73,9 +80,9 @@ class Constructor {
      */
     public function columnQuote(string $col): string {
         if (false !== strpos($col, '.')) {
-            return $this->concat('`', $this->_prefix, str_replace('.', '`.`', $col), '`');
+            return Utils::concat('`', $this->_prefix, str_replace('.', '`.`', $col), '`');
         }
-        return $this->concat('`', $col, '`');
+        return Utils::concat('`', $col, '`');
     }
 
     /**
@@ -84,7 +91,7 @@ class Constructor {
      * @return string
      */
     public function tableQuote(string $table): string {
-        return $this->concat('`', $this->_prefix, $table, '`');
+        return Utils::concat('`', $this->_prefix, $table, '`');
     }
 
     /**
@@ -114,38 +121,6 @@ class Constructor {
      */
     public function isSelector($obj): bool {
         return $obj instanceof Selector;
-    }
-
-    /**
-     * 构建select查询语句
-     * @param Selector $selector
-     * @return string
-     */
-    protected function _selectContext(Selector $selector) {
-        $cols_str = $this->_assembleColumns($selector, $selector->contextColumn());
-        $table_str = $this->_assembleTables($selector, $selector->contextJoin());
-        $where = $this->_assembleWhere($selector, $selector->contextWhere());
-        if (!empty($where)) {
-            $where = ' where ' . $where;
-        }
-        return $this->concat('select ', $cols_str, ' from ', $table_str, $where);
-    }
-
-    /**
-     * 构建select查询语句
-     * @return string
-     */
-    public function selectContext(): string {
-        return $this->_selectContext($this->_selector);
-    }
-
-    public function insertContext(): string {
-    }
-
-    public function updateContext(): string {
-    }
-
-    public function deleteContext(): string {
     }
 
     /**
@@ -202,7 +177,8 @@ class Constructor {
 
                 $stack[] = $col;
 
-            } else if (is_object($col) && $this->isRaw($col)) {
+            } else if ($this->isRaw($col)) {
+                $this->_addMap($col);
 
                 $col_val = $col->value();
 
@@ -214,17 +190,16 @@ class Constructor {
                         $stack[] = $this->rawQuote($col);
                     }
 
-                } else if (is_object($col_val) && $this->isSelector($col_val)) {
+                }
+            } else if ($this->isSelector($col)) {
 
-                    // subquery
-                    $stack[] = $this->concat('(', (new static($this->_options, $col_val))->selectContext(), ') as ', $this->columnQuote($alias));
+                // subquery
+                $stack[] = Utils::concat('(', $this->_selectContext($col), ') as ', $this->columnQuote($alias));
 
-                    // set column type
-                    $sub_type_map = $col_val->getColumnType();
-                    if (!empty($sub_type_map)) {
-                        $selector->setColumnType($alias, array_pop($sub_type_map));
-                    }
-
+                // set column type
+                $sub_type_map = $col->getColumnType();
+                if (!empty($sub_type_map)) {
+                    $selector->setColumnType($alias, array_pop($sub_type_map));
                 }
 
             } else if (is_array($col)) {
@@ -252,13 +227,44 @@ class Constructor {
 
         // current table
         if (!empty($selector->aliasName())) {
-            $stack[] = $this->concat($this->tableQuote($selector->tableName()), ' as ', $this->tableQuote($selector->aliasName()));
+            $stack[] = Utils::concat($this->tableQuote($selector->tableName()), ' as ', $this->tableQuote($selector->aliasName()));
         } else {
             $stack[] = $this->tableQuote($selector->tableName());
         }
 
         // joins
+        if (!empty($joins)) {
 
+            foreach ($joins as $item) {
+                list($join_type, $table, $alias, $on) = $item;
+
+                // type
+                $stack[] = Utils::concat(self::OPERATOR_MAP[$join_type]);
+
+                // table
+                if (!empty($alias)) {
+                    $prefix = $alias;
+                    $stack[] = Utils::concat($this->tableQuote($table), ' as ', $this->tableQuote($alias));
+                } else {
+                    $prefix = $table;
+                    $stack[] = $this->tableQuote($table);
+                }
+
+                // on
+                $stack[] = 'on';
+                $line = [];
+                foreach ($on as $col_join => $col_other) {
+                    if (false === strpos($col_join, '.')) {
+                        $col_join = Utils::concat($prefix, '.', $col_join);
+                    }
+                    $line[] = Utils::concat($this->columnQuote($col_join), ' = ', $this->columnQuote($col_other));
+                }
+
+                $stack[] = implode(' and ', $line);
+
+            }
+
+        }
 
         return implode(' ', $stack);
 
@@ -274,9 +280,53 @@ class Constructor {
 
         $stack = [];
 
-        if (!empty($where['where'])) {
-            $conditions = $where['where'];
-            $stack[] = $this->_whereClause($selector, $conditions);
+        // where
+        if (!empty($where['WHERE'])) {
+            $conditions = $where['WHERE'];
+            $content = $this->_whereClause($selector, $conditions);
+            if (!empty($content)) {
+                $stack[] = 'where ' . $content;
+            }
+        }
+
+        // group and having
+        if (!empty($where['GROUP'])) {
+
+            $groups = $where['GROUP'];
+            array_walk($groups, function (&$item) {
+
+                if ($this->isRaw($item)) {
+                    $item = $this->rawQuote($item);
+                } else {
+                    $item = $this->columnQuote($item);
+                }
+
+            });
+
+            $stack[] = Utils::concat('group by ', implode(',', $groups));
+
+            // having
+            if (!empty($where['HAVING'])) {
+                $stack[] = Utils::concat('having ', $this->_whereClause($selector, $where['HAVING']));
+
+            }
+
+        }
+
+        // order
+        if (!empty($where['ORDER'])) {
+            $order = $where['ORDER'];
+
+            $stack[] = 'order by';
+
+            foreach ($order as $rule => $fields) {
+
+                $fields = array_map(fn($item) => Utils::concat(($this->isRaw($item) ? $this->rawQuote($item) : $this->columnQuote($item)), ' ', self::OPERATOR_MAP[$rule]), $fields);
+
+                $stack[] = implode(',', $fields);
+
+            }
+
         }
 
         return empty($stack) ? '' : implode(' ', $stack);
@@ -310,15 +360,15 @@ class Constructor {
 
             // 条件关系
             if (in_array($op, [Selector::COND_AND, Selector::COND_OR])) {
-                $stack[] = $this->concat('(', $this->_whereClause($selector, $val, self::OPERATOR_MAP[$op]), ')');
+                $stack[] = Utils::concat('(', $this->_whereClause($selector, $val, self::OPERATOR_MAP[$op]), ')');
                 continue;
             }
 
             // 解析column字段名
             $column = '';
-            if (is_string($column)) {
+            if (is_string($key)) {
                 $column = $this->columnQuote($key);
-            } else if (is_object($column) && $this->isRaw($column)) {
+            } else if (is_object($key) && $this->isRaw($key)) {
                 $column = $this->rawQuote($key);
             }
 
@@ -339,7 +389,7 @@ class Constructor {
                         $key_stack[] = $map_key;
                     }
 
-                    $stack[] = $this->concat($column, ($op === Selector::COND_EQ ? ' in' : ' not in'), ' (', implode(',', $key_stack), ')');
+                    $stack[] = Utils::concat($column, ($op === Selector::COND_EQ ? ' in' : ' not in'), ' (', implode(',', $key_stack), ')');
 
                     continue;
 
@@ -347,7 +397,7 @@ class Constructor {
             } else if (in_array($op, [Selector::COND_BTW, Selector::COND_NBTW])) { // between
 
                 if (is_array($val)) {
-                    $stack[] = $this->concat('(', $column, ' ', self::OPERATOR_MAP[$op], ' ', $this->_addMap($val[0]), ' and ', $this->_addMap($val[1]), ')');
+                    $stack[] = Utils::concat('(', $column, ' ', self::OPERATOR_MAP[$op], ' ', $this->_addMap($val[0]), ' and ', $this->_addMap($val[1]), ')');
 
                     continue;
                 }
@@ -363,11 +413,16 @@ class Constructor {
                 if ($this->isRaw($val)) {
 
                     $this->_addMap($val);
-                    $stack[] = $this->concat('(', $column, ' ', self::OPERATOR_MAP[$op], ' ', $this->rawQuote($val), ')');
+
+                    if (empty($column)) {
+                        $stack[] = $this->rawQuote($val);
+                    } else {
+                        $stack[] = Utils::concat('(', $column, ' ', self::OPERATOR_MAP[$op], ' ', $this->rawQuote($val), ')');
+                    }
 
                 } else if ($this->isSelector($val)) {
 
-                    $stack[] = $this->concat($column, ' ', self::OPERATOR_MAP[$op], ' (', $this->_selectContext($val) . ')');
+                    $stack[] = Utils::concat($column, ' ', self::OPERATOR_MAP[$op], ' (', $this->_selectContext($val) . ')');
 
                 }
 
@@ -377,13 +432,13 @@ class Constructor {
 
                     // 若没有手动指定%, 则修改为全匹配
                     if (!preg_match('/(?:%.+|.+%)/', $val)) {
-                        $val = $this->concat('%', $val, '%');
+                        $val = Utils::concat('%', $val, '%');
                     }
 
                 }
 
                 $map_key = $this->_addMap($val);
-                $stack[] = $this->concat($column, ' ', self::OPERATOR_MAP[$op], ' ', $map_key);
+                $stack[] = Utils::concat($column, ' ', self::OPERATOR_MAP[$op], ' ', $map_key);
 
             }
 
@@ -415,7 +470,7 @@ class Constructor {
             $key = $map_key ?: ':MoOn_' . $guid++ . '_NoOm';
 
             // value type
-            $val_type = $this->typeof($val);
+            $val_type = Utils::typeof($val);
 
             if ($val_type === 'boolean') {
                 $val = $val_type ? 1 : 0;
@@ -441,39 +496,102 @@ class Constructor {
     }
 
     /**
-     * 获取数据类型
-     * @param mixed $var 变量
+     * 构建select查询语句
+     * @param Selector $selector
      * @return string
      */
-    public function typeof($var) {
-        if (is_object($var)) {
-            return "object";
-        }
+    protected function _selectContext(Selector $selector) {
+        $cols_str = $this->_assembleColumns($selector, $selector->contextColumn());
+        $table_str = $this->_assembleTables($selector, $selector->contextJoin());
+        $where = $this->_assembleWhere($selector, $selector->contextWhere());
 
-        if (is_resource($var)) {
-            return "resource";
-        }
-
-        return (($var === null) ? "NULL" :
-            (((bool)$var === $var) ? "boolean" :
-                (((float)$var === $var) ? "double" :
-                    (((int)$var === $var) ? "integer" :
-                        (((string)$var === $var) ? "string" :
-                            "unknown"
-                        )
-                    )
-                )
-            )
-        );
+        return Utils::concat('select ', $cols_str, ' from ', $table_str, $where);
     }
 
     /**
-     * 拼接字符串
-     * @param mixed $strs
+     * 构建查询语句
      * @return string
      */
-    public function concat(string ...$strs): string {
-        return implode('', $strs);
+    public function selectContext(): string {
+        return $this->_selectContext($this->_selector);
+    }
+
+    /**
+     * 构建select查询语句
+     * @param Selector $selector
+     * @return string
+     */
+    protected function _insertContext(Selector $selector) {
+        $table_str = $this->tableQuote($selector->tableName());
+
+        $values = $selector->contextValue();
+
+        if (empty($values)) {
+            throw new InvalidArgumentException('values is null, nothing will be done');
+        }
+
+        // 字段列表
+        $fields = [];
+        $stack = [];
+
+        // 是否批量插入
+        if ($selector->isMulti()) {
+
+            /* @todo
+             * $fields = array_keys($values[0]);
+             *
+             * foreach ($values as $ones) {
+             * // fields values
+             * $fields_value = array_column($ones, 0);
+             * array_walk($fields_value, function (&$item) {
+             * $item = $this->_addMap($item);
+             * });
+             *
+             * $stack[] = Utils::concat('(', implode(',', $fields_value), ')');
+             * }
+             */
+        } else { // 单条插入
+
+            // fields
+            $fields = array_keys($values);
+
+            // fields values
+            $fields_value = array_column($values, 0);
+            array_walk($fields_value, function (&$item) {
+
+                if (!is_object($item)) {
+                    $item = $this->_addMap($item);
+                } else if ($this->isRaw($item)) {
+
+                }
+
+            });
+
+            $stack[] = Utils::concat('(', implode(',', $fields_value), ')');
+        }
+        return Utils::concat('insert into ', $table_str, '(`', implode('`, `', $fields), '`) values ', implode(',', $stack));
+    }
+
+    /**
+     * 构建新增语句
+     * @return string
+     */
+    public function insertContext(): string {
+        return $this->_insertContext($this->_selector);
+    }
+
+    /**
+     * 构建更新语句
+     * @return string
+     */
+    public function updateContext(): string {
+    }
+
+    /**
+     * 构建删除语句
+     * @return string
+     */
+    public function deleteContext(): string {
     }
 
 }
