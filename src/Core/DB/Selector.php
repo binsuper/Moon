@@ -2,6 +2,7 @@
 
 namespace Moon\Core\DB;
 
+use Moon\Core\Collection;
 use Moon\Core\Error\InvalidArgumentException;
 use Moon\Helper\Utils;
 
@@ -22,21 +23,23 @@ class Selector {
     const COL_TYPE_JSON   = '[Json]';
 
     // 比较符
-    const COND_EQ     = '=';    // 等于
-    const COND_NEQ    = '!';    // 不等于
-    const COND_LT     = '<';    // 小于
-    const COND_LE     = '<=';   // 小于等于
-    const COND_GT     = '>';    // 大于
-    const COND_GE     = '>=';   // 大于等于
-    const COND_IN     = '[]';   // 包含在列表中
-    const COND_NIN    = '][';   // 不包含在列表中
-    const COND_LK     = '~';    // 相似
-    const COND_NLK    = '!~';   // 不相似
-    const COND_REGEXP = '~~';   // 正则匹配
-    const COND_BTW    = '<>';   // 介于两者之间(包含边界)
-    const COND_NBTW   = '><';   // 不在两者之间(不包含边界)
-    const COND_AND    = '&&';   // 条件之间的关系 - 且
-    const COND_OR     = '||';   // 条件之间的关系 - 或
+    const COND_EQ      = '=';    // 等于
+    const COND_NEQ     = '!=';   // 不等于
+    const COND_LT      = '<';    // 小于
+    const COND_LE      = '<=';   // 小于等于
+    const COND_GT      = '>';    // 大于
+    const COND_GE      = '>=';   // 大于等于
+    const COND_IN      = '[]';   // 包含在列表中
+    const COND_NIN     = '][';   // 不包含在列表中
+    const COND_LK      = '~';    // 相似
+    const COND_NLK     = '!~';   // 不相似
+    const COND_REGEXP  = '~~';   // 正则匹配
+    const COND_BTW     = '<>';   // 介于两者之间(包含边界)
+    const COND_NBTW    = '><';   // 不在两者之间(不包含边界)
+    const COND_EXISTS  = '@';    // 存在
+    const COND_NEXISTS = '!@';   // 不存在
+    const COND_AND     = '&&';   // 条件之间的关系 - 且
+    const COND_OR      = '||';   // 条件之间的关系 - 或
 
     // 排序
     const ORDER_ASC  = 'asc';   // 升序
@@ -78,7 +81,7 @@ class Selector {
      * 表名
      * @return string
      */
-    public function tableName(): string {
+    public function table(): string {
         return $this->_table;
     }
 
@@ -86,7 +89,7 @@ class Selector {
      * 别名
      * @return string
      */
-    public function aliasName(): string {
+    public function alias(): string {
         return $this->_alias;
     }
 
@@ -95,7 +98,7 @@ class Selector {
      * @param string $alias
      * @return $this
      */
-    public function alias(string $alias): self {
+    public function setAlias(string $alias): self {
         $this->_alias = $alias;
         return $this;
     }
@@ -311,6 +314,24 @@ class Selector {
     }
 
     /**
+     * 查询条件关系 - 存在
+     * @param Selector|Raw $val
+     * @return $this
+     */
+    public function whereExists($val): self {
+        return $this->_where(null, self::COND_EXISTS, $val);
+    }
+
+    /**
+     * 查询条件关系 - 不存在
+     * @param Selector|Raw $val
+     * @return $this
+     */
+    public function whereNotExists($val): self {
+        return $this->_where(null, self::COND_NEXISTS, $val);
+    }
+
+    /**
      * 设置检索字段的数据类型
      * @param string $col
      * @param string $type
@@ -396,15 +417,74 @@ class Selector {
     }
 
     /**
+     * 添加检索的字段名 - 字符串
+     * @param string $col
+     * @param string|null $alias
+     * @return $this
+     */
+    public function columnString(string $col, ?string $alias = null): self {
+        $this->_column($col, $alias);
+        $this->setColumnType($col, self::COL_TYPE_STRING);
+        return $this;
+    }
+
+    /**
      * 添加检索的字段名 - 整型
      * @param string $col
      * @param string|null $alias
      * @return $this
-     * @throws InvalidArgumentException
      */
     public function columnInt(string $col, ?string $alias = null): self {
         $this->_column($col, $alias);
         $this->setColumnType($col, self::COL_TYPE_INT);
+        return $this;
+    }
+
+    /**
+     * 添加检索的字段名 - 布尔
+     * @param string $col
+     * @param string|null $alias
+     * @return $this
+     */
+    public function columnBool(string $col, ?string $alias = null): self {
+        $this->_column($col, $alias);
+        $this->setColumnType($col, self::COL_TYPE_BOOL);
+        return $this;
+    }
+
+    /**
+     * 添加检索的字段名 - json
+     * @param string $col
+     * @param string|null $alias
+     * @return $this
+     */
+    public function columnJson(string $col, ?string $alias = null): self {
+        $this->_column($col, $alias);
+        $this->setColumnType($col, self::COL_TYPE_JSON);
+        return $this;
+    }
+
+    /**
+     * 添加检索的字段名 - number
+     * @param string $col
+     * @param string|null $alias
+     * @return $this
+     */
+    public function columnNumber(string $col, ?string $alias = null): self {
+        $this->_column($col, $alias);
+        $this->setColumnType($col, self::COL_TYPE_NUMBER);
+        return $this;
+    }
+
+    /**
+     * 添加检索的字段名 - object
+     * @param string $col
+     * @param string|null $alias
+     * @return $this
+     */
+    public function columnObject(string $col, ?string $alias = null): self {
+        $this->_column($col, $alias);
+        $this->setColumnType($col, self::COL_TYPE_OBJECT);
         return $this;
     }
 
@@ -428,8 +508,8 @@ class Selector {
 
         } else if ($table instanceof self) {
 
-            $alias = $table->aliasName();
-            $table = $table->tableName();
+            $alias = $table->alias();
+            $table = $table->table();
 
         } else {
             throw new InvalidArgumentException(Utils::concat('arguments #2 must be string or object instanceof Selector, ', Utils::typeof($table), ' given'));
@@ -640,15 +720,25 @@ class Selector {
     }
 
     /**
-     * 将当前已设置的value数据增加到multi列表中，并置空value.
+     * 此操作将忽略value设置的数据
      * 这将会影响contextValue函数返回的数据结构.
+     * 一般只有批量插入时使用
+     * @param array $fields 列名
+     * @param array $list 二维数组，元素个数需与fields保持一致。例： [ [ val1, val2 ] ]
      * @return $this
      */
-    public function multiValue(): self {
-        if (!empty($this->_values)) {
-            $this->_multi_values[] = $this->_values;
+    public function multiValue(array $fields, array $list): self {
+        $backup = $this->_values;
+        foreach ($list as $item) {
             $this->_values = [];
+            foreach ($item as $inx => $val) {
+                $this->value($fields[$inx], $val);
+            }
+            if (!empty($this->_values)) {
+                $this->_multi_values[] = $this->_values;
+            }
         }
+        $this->_values = $backup;
         return $this;
     }
 

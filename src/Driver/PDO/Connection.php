@@ -4,7 +4,18 @@ namespace Moon\Driver\PDO;
 
 class Connection implements \Moon\Core\Connection\ConnectionInterface {
 
-    public function __construct() {
+    private string $__dsn;
+
+    private string $__ip;
+
+    private string $__user;
+
+    /**
+     * Connection constructor.
+     * @param array $options
+     */
+    public function __construct(array $options) {
+
     }
 
     public function connect() {

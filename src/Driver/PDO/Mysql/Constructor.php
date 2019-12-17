@@ -12,25 +12,27 @@ class Constructor {
 
     // 操作符映射
     const OPERATOR_MAP = [
-        Selector::COND_EQ     => '=',           // 等于
-        Selector::COND_NEQ    => '!=',          // 不等于
-        Selector::COND_LT     => '<',           // 小于
-        Selector::COND_LE     => '<=',          // 小于等于
-        Selector::COND_GT     => '>',           // 大于
-        Selector::COND_GE     => '>=',          // 大于等于
-        Selector::COND_LK     => 'like',        // 大于等于
-        Selector::COND_NLK    => 'not like',    // 大于等于
-        Selector::COND_BTW    => 'between',     // 大于等于
-        Selector::COND_NBTW   => 'not between', // 大于等于
-        Selector::COND_AND    => 'and',         // 且
-        Selector::COND_OR     => 'or',          // 或
-        Selector::COND_REGEXP => 'REGEXP',      // 正则
-        Selector::JOIN_INNER  => 'inner join',  // 内联
-        Selector::JOIN_LEFT   => 'left join',   // 左联
-        Selector::JOIN_RIGHT  => 'right join',  // 右联
-        Selector::JOIN_FULL   => 'outer join',  // 外联
-        Selector::ORDER_ASC   => 'asc',         // 右联
-        Selector::ORDER_DESC  => 'desc',        // 外联
+        Selector::COND_EQ      => '=',           // 等于
+        Selector::COND_NEQ     => '!=',          // 不等于
+        Selector::COND_LT      => '<',           // 小于
+        Selector::COND_LE      => '<=',          // 小于等于
+        Selector::COND_GT      => '>',           // 大于
+        Selector::COND_GE      => '>=',          // 大于等于
+        Selector::COND_LK      => 'like',        // 大于等于
+        Selector::COND_NLK     => 'not like',    // 大于等于
+        Selector::COND_BTW     => 'between',     // 大于等于
+        Selector::COND_NBTW    => 'not between', // 大于等于
+        Selector::COND_AND     => 'and',         // 且
+        Selector::COND_OR      => 'or',          // 或
+        Selector::COND_REGEXP  => 'REGEXP',      // 正则
+        Selector::COND_EXISTS  => 'exists',      // 正则
+        Selector::COND_NEXISTS => 'not exists',  // 正则
+        Selector::JOIN_INNER   => 'inner join',  // 内联
+        Selector::JOIN_LEFT    => 'left join',   // 左联
+        Selector::JOIN_RIGHT   => 'right join',  // 右联
+        Selector::JOIN_FULL    => 'outer join',  // 外联
+        Selector::ORDER_ASC    => 'asc',         // 右联
+        Selector::ORDER_DESC   => 'desc',        // 外联
     ];
 
     // php数据类型与PDO数据类型的映射关系
@@ -226,10 +228,10 @@ class Constructor {
         $stack = [];
 
         // current table
-        if (!empty($selector->aliasName())) {
-            $stack[] = Utils::concat($this->tableQuote($selector->tableName()), ' as ', $this->tableQuote($selector->aliasName()));
+        if (!empty($selector->alias())) {
+            $stack[] = Utils::concat($this->tableQuote($selector->table()), ' as ', $this->tableQuote($selector->alias()));
         } else {
-            $stack[] = $this->tableQuote($selector->tableName());
+            $stack[] = $this->tableQuote($selector->table());
         }
 
         // joins
@@ -333,6 +335,74 @@ class Constructor {
     }
 
     /**
+     * 构建“更新”语句
+     * @param Selector $selector
+     * @param array $values 条件数组
+     * @return string
+     */
+    protected function _assembleUpdate(Selector $selector, array $values): string {
+
+        $stack = [];
+
+        foreach ($values as $col => $item) {
+            list($val, $op) = $item;
+
+            //col
+            $col = $this->columnQuote($col);
+
+            // prefix
+            if ($op === Selector::VALUE_TYPE_ADD) {
+                $prefix = Utils::concat($col, ' = ', $col, ' + ');
+            } else if ($op === Selector::VALUE_TYPE_SUB) {
+                $prefix = Utils::concat($col, ' = ', $col, ' - ');
+            } else if ($op === Selector::VALUE_TYPE_MUL) {
+                $prefix = Utils::concat($col, ' = ', $col, ' * ');
+            } else if ($op === Selector::VALUE_TYPE_DIV) {
+                $prefix = Utils::concat($col, ' = ', $col, ' / ');
+            } else {
+                $prefix = Utils::concat($col, ' = ');
+            }
+
+            if (is_string($val) || is_numeric($val)) {
+
+                $stack[] = Utils::concat($prefix, $this->_addMap($val));
+
+            } else if (is_object($val)) {
+
+                if ($this->isRaw($val)) {
+
+                    $this->_addMap($val);
+                    $stack[] = Utils::concat($prefix, $this->rawQuote($val));
+
+                } else if ($this->isSelector($val)) {
+
+                    $stack[] = Utils::concat($prefix, '(', $this->_selectContext($val), ')');
+
+                } else if ($op === Selector::VALUE_TYPE_JSON) {
+
+                    $stack[] = Utils::concat($prefix, $this->_addMap(json_encode($val)));
+
+                } else {
+                    throw new InvalidArgumentException('unsupported type');
+                }
+
+            } else if (is_array($val)) {
+                if ($op === Selector::VALUE_TYPE_JSON) {
+
+                    $stack[] = Utils::concat($prefix, $this->_addMap(json_encode($val)));
+
+                } else {
+                    throw new InvalidArgumentException('unsupported type');
+                }
+            }
+
+        }
+
+        return implode(' , ', $stack);
+
+    }
+
+    /**
      * where条件从句
      * @param Selector $selector
      * @param array $conditions 条件数组
@@ -422,7 +492,11 @@ class Constructor {
 
                 } else if ($this->isSelector($val)) {
 
-                    $stack[] = Utils::concat($column, ' ', self::OPERATOR_MAP[$op], ' (', $this->_selectContext($val) . ')');
+                    if (empty($column)) {
+                        $stack[] = Utils::concat(self::OPERATOR_MAP[$op], ' (', $this->_selectContext($val) . ')');
+                    } else {
+                        $stack[] = Utils::concat($column, ' ', self::OPERATOR_MAP[$op], ' (', $this->_selectContext($val) . ')');
+                    }
 
                 }
 
@@ -520,9 +594,10 @@ class Constructor {
      * 构建select查询语句
      * @param Selector $selector
      * @return string
+     * @throws InvalidArgumentException
      */
     protected function _insertContext(Selector $selector) {
-        $table_str = $this->tableQuote($selector->tableName());
+        $table_str = $this->tableQuote($selector->table());
 
         $values = $selector->contextValue();
 
@@ -532,43 +607,48 @@ class Constructor {
 
         // 字段列表
         $fields = [];
+        $list = [];
         $stack = [];
-
         // 是否批量插入
         if ($selector->isMulti()) {
+            // fields
+            $fields = array_keys($values[0]);
 
-            /* @todo
-             * $fields = array_keys($values[0]);
-             *
-             * foreach ($values as $ones) {
-             * // fields values
-             * $fields_value = array_column($ones, 0);
-             * array_walk($fields_value, function (&$item) {
-             * $item = $this->_addMap($item);
-             * });
-             *
-             * $stack[] = Utils::concat('(', implode(',', $fields_value), ')');
-             * }
-             */
+            $list = $values;
+
         } else { // 单条插入
 
             // fields
             $fields = array_keys($values);
 
-            // fields values
-            $fields_value = array_column($values, 0);
-            array_walk($fields_value, function (&$item) {
+            $list = [$values];
 
+        }
+
+        // scan list
+        foreach ($list as $ones) {
+            // fields values
+            $fields_value = array_column($ones, 0);
+            array_walk($fields_value, function (&$item) {
                 if (!is_object($item)) {
+
                     $item = $this->_addMap($item);
+
                 } else if ($this->isRaw($item)) {
 
-                }
+                    $this->_addMap($item);
+                    $item = $this->rawQuote($item);
 
+                } else if ($this->isSelector($item)) {
+
+                    $item = Utils::concat('(', $this->_selectContext($item), ')');
+
+                }
             });
 
             $stack[] = Utils::concat('(', implode(',', $fields_value), ')');
         }
+
         return Utils::concat('insert into ', $table_str, '(`', implode('`, `', $fields), '`) values ', implode(',', $stack));
     }
 
@@ -581,10 +661,43 @@ class Constructor {
     }
 
     /**
+     * 构建update语句
+     * @param Selector $selector
+     * @return string
+     */
+    protected function _updateContext(Selector $selector) {
+        $values = $selector->contextValue();
+        $conds = $selector->contextWhere();
+
+        $table_str = $this->_assembleTables($selector, $selector->contextJoin());
+        $where = $this->_whereClause($selector, $conds['WHERE'] ?? []);
+        $set_str = $this->_assembleUpdate($selector, $values);
+
+        return Utils::concat('update ', $table_str, ' set ', $set_str, ' where ', $where);
+
+    }
+
+    /**
      * 构建更新语句
      * @return string
      */
     public function updateContext(): string {
+        return $this->_updateContext($this->_selector);
+    }
+
+    /**
+     * 构建delete语句
+     * @param Selector $selector
+     * @return string
+     */
+    protected function _deleteContext(Selector $selector) {
+
+        $table_str = $this->tableQuote($selector->table());
+
+        $conds = $selector->contextWhere();
+
+        return Utils::concat('delete from ', $table_str, ' where ', $this->_whereClause($selector, $conds['WHERE'] ?? []));
+
     }
 
     /**
@@ -592,6 +705,7 @@ class Constructor {
      * @return string
      */
     public function deleteContext(): string {
+        return $this->_deleteContext($this->_selector);
     }
 
 }
