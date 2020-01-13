@@ -412,6 +412,10 @@ class Constructor {
      */
     protected function _whereClause(Selector $selector, array $conditions, ?string $glue = null): string {
 
+        if (empty($conditions)) {
+            return '';
+        }
+
         $stack = [];
         if (!$glue) {
             $glue = 'and';
@@ -673,7 +677,11 @@ class Constructor {
         $where = $this->_whereClause($selector, $conds['WHERE'] ?? []);
         $set_str = $this->_assembleUpdate($selector, $values);
 
-        return Utils::concat('update ', $table_str, ' set ', $set_str, ' where ', $where);
+        if (empty($where)) {
+            return Utils::concat('update ', $table_str, ' set ', $set_str);
+        } else {
+            return Utils::concat('update ', $table_str, ' set ', $set_str, ' where ', $where);
+        }
 
     }
 

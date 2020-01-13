@@ -722,7 +722,7 @@ class Selector {
     /**
      * 此操作将忽略value设置的数据
      * 这将会影响contextValue函数返回的数据结构.
-     * 一般只有批量插入时使用
+     * 只对批量插入数据时有效
      * @param array $fields 列名
      * @param array $list 二维数组，元素个数需与fields保持一致。例： [ [ val1, val2 ] ]
      * @return $this

@@ -42,9 +42,9 @@ $s
 //    ->orderAsc('name')
 ;
 
-//$s->value('name', '赵四')
-//    ->value('class', 1);
-//
+$s->value('name', '赵四')
+    ->value('class', 1);
+
 //$s->multiValue(['name', 'class'], [
 //    ['张三', 1],
 //    ['李四', 1],
@@ -53,13 +53,13 @@ $s
 $c = new Constructor(['prefix' => ''], $s);
 
 print_r($c->selectContext());
-//print_r($c->updateContext());
+//print_r($c->insertContext());
 //print_r($s->getColumnType());
 
 
 $col = new Collection([ ['name' => 123, 'u' => '16', 'tt' => json_encode([1])] ]);
 $col->render($s->getColumnType());
+var_dump($col->toArray());
 
-//
 //list($a,$b) = [1,2];
 //var_dump($a,$b);
