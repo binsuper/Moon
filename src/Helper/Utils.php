@@ -2,6 +2,8 @@
 
 namespace Moon\Helper;
 
+use Moon\Core\Error\InvalidArgumentException;
+
 class Utils {
 
     /**
@@ -18,7 +20,7 @@ class Utils {
      * @param mixed $var 变量
      * @return string
      */
-    public static function typeof($var) {
+    public static function typeof($var): string {
         if (is_object($var)) {
             return "object";
         }
@@ -38,6 +40,40 @@ class Utils {
                 )
             )
         );
+    }
+
+    /**
+     * 获取数组中特定键名的数据
+     * 如果数据为空或者不存在，则抛出异常
+     * @param array $arr 数组
+     * @param string|int ...$keys 键名
+     * @return mixed
+     */
+    public static function getNotEmpty(array $arr, ...$keys) {
+        if (count($keys) > 1) {
+
+            $stack = [];
+
+            foreach ($keys as $key) {
+
+                if (empty($arr[$key])) {
+                    throw new InvalidArgumentException('参数<' . $key . '>不允许为空');
+                }
+                $stack[$key] = $arr[$key];
+
+            }
+
+            return $stack;
+
+        } else {
+
+            if (empty($arr[$keys[0]])) {
+                throw new InvalidArgumentException('参数<' . $keys[0] . '>不允许为空');
+            }
+
+            return $arr[$keys[0]];
+
+        }
     }
 
 }

@@ -26,6 +26,9 @@ class Loader {
         static::$__drivers[$driver_name] = $driver_class_name;
     }
 
+    /**
+     * 获取构造器
+     */
     public function getConstructor() {
     }
 
