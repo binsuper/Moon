@@ -370,7 +370,7 @@ $model->selectStruct(['id', 'info' => ['name(nickname)', 'sex']])->limit(2)->all
     [{
     	"id": "1000011",
     	"info": {
-    		"nickname": "15999660803",
+    		"nickname": "李四",
     		"sex": "0"
     	}
     }, {
@@ -389,7 +389,7 @@ $model->selectInt('id')->selectStruct(['info' => ['name(nickname)', 'sex']])->li
     [{
     	"id": 1000011, //int类型
     	"info": {
-    		"nickname": "15999660803",
+    		"nickname": "李四",
     		"sex": "0"
     	}
     }, {
