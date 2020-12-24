@@ -20,6 +20,7 @@ class MoonMedoo extends Medoo {
      * @param string $table
      * @param array $datas
      * @param array $update_datas
+     *
      * @return \PDOStatement|booelan
      */
     public function insertUpdate($table, $datas, $update_datas) {
@@ -283,6 +284,7 @@ class MoonMedoo extends Medoo {
      * @param array $join
      * @param array $columns
      * @param array $where
+     *
      * @return boolean|int 返回查询的行数
      */
     public function selectEach($callback, $table, $join, $columns = null, $where = null) {
@@ -296,8 +298,8 @@ class MoonMedoo extends Medoo {
         }
         $use_data_map = false;
         if (is_array($columns)) {
-            foreach($column_map as $colm){
-                if($colm[0] === '*'){
+            foreach ($column_map as $colm) {
+                if ($colm[0] === '*') {
                     $use_data_map = true;
                     break;
                 }
@@ -418,6 +420,8 @@ class MoonMedoo extends Medoo {
  */
 class Moon {
 
+    const ERROR_SERVER_INTERRUPT = " MySQL server has gone away";
+
     protected static $global_options;
     private static   $_instance;
     private static   $hash_cnt      = 0;
@@ -499,8 +503,9 @@ class Moon {
      * 执行事务
      * $action函数有且仅有一个入参，类型为(\Moon\Connection)
      *
-     * @param callable $action 事务函数
+     * @param callable $action   事务函数
      * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
+     *
      * @return mixed
      */
     public static function doTrans(callable $action, $callback = null) {
@@ -511,6 +516,7 @@ class Moon {
      *
      * @param string $table
      * @param string $alias
+     *
      * @return \Moon\Selector
      */
     public function selector(string $table, string $alias = ''): Selector {
@@ -522,6 +528,7 @@ class Moon {
      * 获取一个连接
      *
      * @param int $i
+     *
      * @return \Moon\Connection
      */
     protected function getConn(int $i): Connection {
@@ -565,9 +572,8 @@ class Moon {
         if (isset($this->conns[1])) {
             return $this->conns[1];
         }
-        $conn           = $this->getConn($this->randHash());
-        $this->conns[1] = $conn;
-        return $conn;
+        $this->conns[1] = $this->getConn($this->randHash());
+        return $this->conns[1];
     }
 
     /**
@@ -581,6 +587,40 @@ class Moon {
         }
         $this->conns[0] = $this->getConn(0);
         return $this->conns[0];
+    }
+
+    /**
+     * 重置从库连接
+     *
+     * @return $this
+     */
+    public function resetReader() {
+        //执行事务时,返回主服务器
+        if ($this->inTransaction()) {
+            return $this->resetWriter();
+        }
+        //不存在从服务器时，直接返回主服务器
+        if (count($this->slave_options) == 0) {
+            return $this->resetWriter();
+        }
+        if (!empty($this->conns[1])) {
+            $this->conns[1] = NULL;
+        }
+        unset($this->conns[1]);
+        return $this;
+    }
+
+    /**
+     * 重置主库连接
+     *
+     * @return $this
+     */
+    public function resetWriter() {
+        if (!empty($this->conns[0])) {
+            $this->conns[0] = NULL;
+        }
+        unset($this->conns[0]);
+        return $this;
     }
 
     /**
@@ -605,15 +645,20 @@ class Moon {
      * 执行事务
      * $action函数有且仅有一个入参，类型为(\Moon\Connection)
      *
-     * @param callable $action 事务函数
+     * @param callable $action   事务函数
      * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
+     *
      * @return mixed
      */
     public function transaction(callable $action, $callback = null) {
-        $this->bInTrans = true;
-        $ret            = $this->getWriter()->transaction($action, $callback);
-        $this->bInTrans = false;
-        return $ret;
+        return static::retry(function () use ($action, $callback) {
+            $this->bInTrans = true;
+            $ret            = $this->getWriter()->transaction($action, $callback);
+            $this->bInTrans = false;
+            return $ret;
+        }, function () {
+            $this->resetWriter();
+        });
     }
 
     /**
@@ -654,6 +699,7 @@ class Moon {
      *
      * @param string $table
      * @param string $alias
+     *
      * @return \Moon\Model
      */
     public function model(string $table, string $alias = ''): Model {
@@ -662,6 +708,37 @@ class Moon {
         $obj->alias = $alias;
         $obj->moon  = $this;
         return $obj;
+    }
+
+    /**
+     * 重试
+     *
+     * @param callable $action
+     * @param null $retry_action
+     * @param int $retry_times
+     *
+     * @return mixed
+     * @throws \Exception
+     */
+    public static function retry(callable $action, $retry_action = null, int $retry_times = 1) {
+        try {
+            try {
+                return call_user_func($action);
+            } catch (\PDOException $ex) {
+                if (false !== strstr($ex->getMessage(), static::ERROR_SERVER_INTERRUPT)) {
+                    throw new RetryException('', 0, $ex);
+                }
+            }
+        } catch (RetryException $ex) {
+            if ($retry_times > 0) {
+                if (is_callable($retry_action)) {
+                    call_user_func($retry_action);
+                }
+                return static::retry($action, null, $retry_times - 1);
+            }
+            throw $ex->getPrevious();
+        }
+        return null;
     }
 
 }
@@ -686,6 +763,7 @@ interface Connection {
      * 查询一条记录
      *
      * @param \Moon\Selector $selector
+     *
      * @return array
      */
     public function fetch(Selector $selector);
@@ -694,6 +772,7 @@ interface Connection {
      * 批量查询记录
      *
      * @param \Moon\Selector $selector
+     *
      * @return \Moon\Collection
      */
     public function fetchAll(Selector $selector);
@@ -704,6 +783,7 @@ interface Connection {
      *
      * @param \Moon\Selector $selector
      * @param callable $callback 回调函数，当且仅当返回false时将结束DB查询
+     *
      * @return int 返回已查询的行数
      */
     public function fetchRow(Selector $selector, $callback);
@@ -712,6 +792,7 @@ interface Connection {
      * 获取行数
      *
      * @param \Moon\Selector $selector
+     *
      * @return int
      */
     public function rowCount(Selector $selector);
@@ -733,6 +814,7 @@ interface Connection {
     /**
      *
      * @param \Moon\Selector $selector
+     *
      * @return int 受影响的行数
      */
     public function update(Selector $selector);
@@ -741,6 +823,7 @@ interface Connection {
      * 删除数据
      *
      * @param \Moon\Selector $selector
+     *
      * @return int 被删除的行数
      */
     public function delete(Selector $selector);
@@ -748,8 +831,9 @@ interface Connection {
     /**
      * 事务嵌套处理
      *
-     * @param callable $action 事务处理函数
+     * @param callable $action   事务处理函数
      * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
+     *
      * @return boolean
      * @throws \Moon\Exception
      */
@@ -760,6 +844,7 @@ interface Connection {
      *
      * @param string $query
      * @param array $map
+     *
      * @return array|boolean 正确是返回结果数组
      */
     public function query($query, $map = []);
@@ -769,6 +854,7 @@ interface Connection {
      *
      * @param string $query
      * @param array $map
+     *
      * @return boolean|int 执行成功返回影响的记录数，否则返回false
      */
     public function exec($query, $map = []);
@@ -860,6 +946,7 @@ class MedooConnection implements Connection {
      * 查询一条记录
      *
      * @param \Moon\Selector $selector
+     *
      * @return array
      */
     public function fetch(Selector $selector) {
@@ -884,6 +971,7 @@ class MedooConnection implements Connection {
      * 批量查询记录
      *
      * @param \Moon\Selector $selector
+     *
      * @return \Moon\Collection
      */
     public function fetchAll(Selector $selector) {
@@ -909,6 +997,7 @@ class MedooConnection implements Connection {
      *
      * @param \Moon\Selector $selector
      * @param callable $callback 回调函数，当且仅当返回false时将结束DB查询
+     *
      * @return bool|int 返回已查询的行数
      */
     public function fetchRow(Selector $selector, $callback) {
@@ -929,6 +1018,7 @@ class MedooConnection implements Connection {
      * 获取行数
      *
      * @param \Moon\Selector $selector
+     *
      * @return int
      */
     public function rowCount(Selector $selector) {
@@ -998,6 +1088,7 @@ class MedooConnection implements Connection {
      * 删除数据
      *
      * @param \Moon\Selector $selector
+     *
      * @return int 被删除的行数
      */
     public function delete(Selector $selector) {
@@ -1015,6 +1106,7 @@ class MedooConnection implements Connection {
     /**
      *
      * @param \Moon\Selector $selector
+     *
      * @return int 受影响的行数
      */
     public function update(Selector $selector) {
@@ -1036,8 +1128,9 @@ class MedooConnection implements Connection {
     /**
      * 事务嵌套处理
      *
-     * @param callable $action 事务处理函数
+     * @param callable $action   事务处理函数
      * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
+     *
      * @return boolean
      * @throws \Moon\Exception
      */
@@ -1112,6 +1205,7 @@ class MedooConnection implements Connection {
      *
      * @param string $query
      * @param array $map
+     *
      * @return array|boolean 正确是返回结果数组
      */
     public function query($query, $map = array()) {
@@ -1127,6 +1221,7 @@ class MedooConnection implements Connection {
      *
      * @param string $query
      * @param array $map
+     *
      * @return boolean|int 执行成功返回影响的记录数，否则返回false
      */
     public function exec($query, $map = array()) {
@@ -1141,6 +1236,7 @@ class MedooConnection implements Connection {
      * Quotes a string for use in a query.
      *
      * @param string $string
+     *
      * @return string
      */
     public function quote($string) {
@@ -1149,6 +1245,7 @@ class MedooConnection implements Connection {
 
     /**
      * @param string $table
+     *
      * @return string
      */
     public function tableQuote($table) {
@@ -1159,6 +1256,7 @@ class MedooConnection implements Connection {
      * 返回最后执行的sql日志
      *
      * @param bool $getNew 获取最新执行的额
+     *
      * @return string
      */
     public function last(bool $getNew = false) {
@@ -1227,6 +1325,7 @@ class Selector {
      * 转还字段名称
      *
      * @param string|array $col
+     *
      * @return string
      */
     protected function _selectName($col) {
@@ -1248,6 +1347,7 @@ class Selector {
      * 搜索的列名加上类型
      *
      * @param string $col
+     *
      * @return string
      */
     public function f2Int(string $col): string {
@@ -1258,6 +1358,7 @@ class Selector {
      * 搜索的列名加上类型
      *
      * @param string $col
+     *
      * @return string
      */
     public function f2Num(string $col): string {
@@ -1268,6 +1369,7 @@ class Selector {
      * 搜索的列名加上类型
      *
      * @param string $col
+     *
      * @return string
      */
     public function f2Bool(string $col): string {
@@ -1278,6 +1380,7 @@ class Selector {
      * 搜索的列名加上类型
      *
      * @param string $col
+     *
      * @return string
      */
     public function f2Json(string $col): string {
@@ -1290,6 +1393,7 @@ class Selector {
      * @param string|array $c
      * @param string $alias
      * @param string $type 数据类型
+     *
      * @return \Moon\Selector
      */
     public function select($c, $alias = null, string $type = ''): Selector {
@@ -1320,6 +1424,7 @@ class Selector {
      * 构造获取的结构
      *
      * @param array $struct
+     *
      * @return $this
      */
     public function selectStruct(array $struct): Selector {
@@ -1332,6 +1437,7 @@ class Selector {
      * @param array|string $c
      * @param string $alias
      * @param string $type
+     *
      * @return \Moon\Selector
      */
     final private function _selectByType($c, $alias, $type) {
@@ -1350,6 +1456,7 @@ class Selector {
      *
      * @param array|string $c
      * @param string $alias
+     *
      * @return \Moon\Selector
      */
     public function selectInt($c, $alias = null) {
@@ -1361,6 +1468,7 @@ class Selector {
      *
      * @param array|string $c
      * @param string $alias
+     *
      * @return \Moon\Selector
      */
     public function selectBool($c, $alias = null) {
@@ -1372,6 +1480,7 @@ class Selector {
      *
      * @param array|string $c
      * @param string $alias
+     *
      * @return \Moon\Selector
      */
     public function selectNumber($c, $alias = null) {
@@ -1383,6 +1492,7 @@ class Selector {
      *
      * @param array|string $c
      * @param string $alias
+     *
      * @return \Moon\Selector
      */
     public function selectJson($c, $alias = null) {
@@ -1394,6 +1504,7 @@ class Selector {
      *
      * @param string|array $k
      * @param string|array $v
+     *
      * @return $this
      */
     public function where($k, $v = null): Selector {
@@ -1410,6 +1521,7 @@ class Selector {
      *
      * @param string|array $k
      * @param string|array $v
+     *
      * @return $this
      */
     public function whereNot(string $k, $v): Selector {
@@ -1421,6 +1533,7 @@ class Selector {
      *
      * @param string $k
      * @param type $v
+     *
      * @return $this
      */
     public function whereGT(string $k, $v): Selector {
@@ -1432,6 +1545,7 @@ class Selector {
      *
      * @param string $k
      * @param type $v
+     *
      * @return $this
      */
     public function whereGE(string $k, $v): Selector {
@@ -1443,6 +1557,7 @@ class Selector {
      *
      * @param string $k
      * @param type $v
+     *
      * @return $this
      */
     public function whereLT(string $k, $v): Selector {
@@ -1454,6 +1569,7 @@ class Selector {
      *
      * @param string $k
      * @param type $v
+     *
      * @return $this
      */
     public function whereLE(string $k, $v): Selector {
@@ -1465,6 +1581,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function whereIn(string $k, array $v): Selector {
@@ -1476,6 +1593,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function whereNotIn(string $k, array $v): Selector {
@@ -1486,6 +1604,7 @@ class Selector {
      * 查询条件 - is null
      *
      * @param string $k
+     *
      * @return $this
      */
     public function whereNull(string $k): Selector {
@@ -1496,6 +1615,7 @@ class Selector {
      * 查询条件 - is not null
      *
      * @param string $k
+     *
      * @return $this
      */
     public function whereNotNull(string $k): Selector {
@@ -1508,6 +1628,7 @@ class Selector {
      * @param string $k
      * @param mixed $v1
      * @param mixed $v2
+     *
      * @return $this
      */
     public function whereBetween(string $k, $v1, $v2): Selector {
@@ -1520,6 +1641,7 @@ class Selector {
      * @param string $k
      * @param mixed $v1
      * @param mixed $v2
+     *
      * @return $this
      */
     public function whereNotBetween(string $k, $v1, $v2): Selector {
@@ -1530,6 +1652,7 @@ class Selector {
      * 查询条件 - or
      *
      * @param callable $func
+     *
      * @return $this
      */
     public function WhereOr(callable $func): Selector {
@@ -1544,6 +1667,7 @@ class Selector {
      * 查询条件 - and
      *
      * @param callable $func
+     *
      * @return $this
      */
     public function WhereAnd(callable $func): Selector {
@@ -1559,6 +1683,7 @@ class Selector {
      *
      * @param string $k
      * @param string $v
+     *
      * @return $this
      */
     public function whereLike(string $k, string $v): Selector {
@@ -1570,6 +1695,7 @@ class Selector {
      *
      * @param string $k
      * @param string $v
+     *
      * @return $this
      */
     public function whereNotLike(string $k, string $v): Selector {
@@ -1581,6 +1707,7 @@ class Selector {
      *
      * @param string $k
      * @param string $v
+     *
      * @return $this
      */
     public function whereFunc(string $k, string $v): Selector {
@@ -1593,6 +1720,7 @@ class Selector {
      * @param int $type
      * @param string $table
      * @param string|array $where
+     *
      * @return $this
      */
     protected function _join(int $type, string $table, $where): Selector {
@@ -1608,6 +1736,7 @@ class Selector {
      * @param int $type
      * @param string|\Selector $table
      * @param \Moon\callable $func
+     *
      * @return boolean|$this
      */
     protected function _joinF(int $type, $table, callable $func) {
@@ -1648,6 +1777,7 @@ class Selector {
      *
      * @param string $table
      * @param callable $func
+     *
      * @return $this
      */
     public function join($table, callable $func) {
@@ -1659,6 +1789,7 @@ class Selector {
      *
      * @param string|\Moon\Selector $table
      * @param callable $func
+     *
      * @return $this
      */
     public function joinLeft($table, callable $func) {
@@ -1670,6 +1801,7 @@ class Selector {
      *
      * @param string|\Moon\Selector $table
      * @param callable $func
+     *
      * @return $this
      */
     public function joinRight($table, callable $func) {
@@ -1681,6 +1813,7 @@ class Selector {
      *
      * @param string|\Moon\Selector $table
      * @param callable $func
+     *
      * @return $this
      */
     public function joinFull($table, callable $func) {
@@ -1691,6 +1824,7 @@ class Selector {
      * 组合
      *
      * @param string|array $groupBy
+     *
      * @return $this
      */
     public function groupBy($groupBy): Selector {
@@ -1706,6 +1840,7 @@ class Selector {
      * HAVING
      *
      * @param \Moon\callable $func
+     *
      * @return $this
      */
     public function having(callable $func): Selector {
@@ -1720,6 +1855,7 @@ class Selector {
      * HAVING
      *
      * @param Raw $raw
+     *
      * @return $this
      */
     public function havingRaw(Raw $raw) {
@@ -1732,6 +1868,7 @@ class Selector {
      *
      * @param string|array $k
      * @param string|array $sort
+     *
      * @return $this
      */
     public function orderBy($k, $sort = 'ASC'): Selector {
@@ -1751,6 +1888,7 @@ class Selector {
      *
      * @param int $offset
      * @param int $len
+     *
      * @return $this
      */
     public function limit(int $offset, int $len = 0): Selector {
@@ -1768,6 +1906,7 @@ class Selector {
      *
      * @param string|array $k
      * @param mixed $v
+     *
      * @return $this
      */
     public function value($k, $v = null): Selector {
@@ -1783,6 +1922,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function valueJson(string $k, array $v): Selector {
@@ -1793,6 +1933,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function valueAdd(string $k, $v): Selector {
@@ -1803,6 +1944,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function valueSub(string $k, $v): Selector {
@@ -1813,6 +1955,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function valueMul(string $k, $v): Selector {
@@ -1823,6 +1966,7 @@ class Selector {
      *
      * @param string $k
      * @param array $v
+     *
      * @return $this
      */
     public function valueDiv(string $k, $v): Selector {
@@ -1833,6 +1977,7 @@ class Selector {
      *
      * @param string $k
      * @param string $v
+     *
      * @return $this
      */
     public function valueFunc(string $k, string $v): Selector {
@@ -1909,6 +2054,7 @@ class Selector {
      * 返回列名
      *
      * @param string $col_name
+     *
      * @return string
      */
     public function col(string $col_name) {
@@ -1922,6 +2068,7 @@ class Selector {
      * 设置别名
      *
      * @param string $alias
+     *
      * @return $this
      */
     public function setAlias(string $alias) {
@@ -2090,105 +2237,160 @@ abstract class Table {
     }
 
     /**
+     * 重置连接
+     *
+     * @return $this
+     */
+    protected function _resetInternalReader() {
+        if ($this->alwaysUseConnType == self::CONN_TYPE_WRITER) {
+            $this->_resetInternalWriter();
+        } else {
+            $this->moon->resetReader();
+        }
+        return $this;
+    }
+
+    /**
+     * 重置连接
+     *
+     * @return $this
+     */
+    protected function _resetInternalWriter() {
+        $this->moon->resetWriter();
+        return $this;
+    }
+
+    /**
      * 获取第一条数据
      *
      * @return array
+     * @throws \Exception
      */
     public function first() {
-        $conn = $this->_getInternalReader();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->fetch($selector);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () {
+            $conn = $this->_getInternalReader();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->fetch($selector);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalReader();
+        });
+
     }
 
     /**
      * 获取符合条件的数据
      *
      * @return \Moon\Collection
+     * @throws \Exception
      */
     public function all() {
-        $conn = $this->_getInternalReader();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->fetchAll($selector);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () {
+            $conn = $this->_getInternalReader();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->fetchAll($selector);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalReader();
+        });
     }
 
     /**
      * 插入数据
      *
      * @return int
+     * @throws \Exception
      */
     public function insert() {
-        $conn = $this->_getInternalWriter();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->insert($selector);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () {
+            $conn = $this->_getInternalWriter();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->insert($selector);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalWriter();
+        });
     }
 
     /**
      * 更新数据
      *
      * @return int
+     * @throws \Exception
      */
     public function update() {
-        $conn = $this->_getInternalWriter();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->update($selector);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () {
+            $conn = $this->_getInternalWriter();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->update($selector);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalWriter();
+        });
     }
 
     /**
      * 删除数据
      *
      * @return int
+     * @throws \Exception
      */
     public function delete() {
-        $conn = $this->_getInternalWriter();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->delete($selector);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () {
+            $conn = $this->_getInternalWriter();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->delete($selector);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalWriter();
+        });
     }
 
     /**
      * 返回数据条目
      *
      * @return int
+     * @throws \Exception
      */
     public function count() {
-        $conn = $this->_getInternalReader();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->rowCount($selector);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () {
+            $conn = $this->_getInternalReader();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->rowCount($selector);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalReader();
+        });
     }
 
     /**
@@ -2196,18 +2398,24 @@ abstract class Table {
      * 这个操作对于大数据查询是安全有效的
      *
      * @param callable $callback
+     *
      * @return bool|int
+     * @throws \Exception
      */
     public function each($callback) {
-        $conn = $this->_getInternalReader();
-        if ($this->_debug) {
-            $conn->debug();
-            $this->_debug = false;
-        }
-        $selector = $this->needSelector();
-        $ret      = $conn->fetchRow($selector, $callback);
-        $selector->clear();
-        return $ret;
+        return Moon::retry(function () use ($callback) {
+            $conn = $this->_getInternalReader();
+            if ($this->_debug) {
+                $conn->debug();
+                $this->_debug = false;
+            }
+            $selector = $this->needSelector();
+            $ret      = $conn->fetchRow($selector, $callback);
+            $selector->clear();
+            return $ret;
+        }, function () {
+            $this->_resetInternalReader();
+        });
     }
 
 }
@@ -2257,6 +2465,7 @@ class Model extends Table {
      * 通过数组参数初始化
      *
      * @param array $data
+     *
      * @return self
      */
     public static function initBy(array $data) {
@@ -2298,6 +2507,7 @@ class Model extends Table {
      * 检查列名是否可以更新
      *
      * @param string $column_name
+     *
      * @return boolean
      */
     protected function checkUpdateColumn($column_name) {
@@ -2315,6 +2525,7 @@ class Model extends Table {
      * 检查列名是否可以获取
      *
      * @param string $column_name
+     *
      * @return boolean
      */
     protected function checkQueryColumn(string $column_name) {
@@ -2331,6 +2542,7 @@ class Model extends Table {
      *
      * @param string $column
      * @param mixed $value
+     *
      * @return \Moon\Model
      */
     public function setData(string $column, $value): Model {
@@ -2345,6 +2557,7 @@ class Model extends Table {
      * 获取数据
      *
      * @param string $column
+     *
      * @return mixed
      */
     public function getData(string $column = '') {
@@ -2359,6 +2572,7 @@ class Model extends Table {
      *
      * @param string $column
      * @param mixed $def
+     *
      * @return mixed
      */
     public function getMetaData(string $column = '', $def = null) {
@@ -2381,6 +2595,7 @@ class Model extends Table {
      * 设置主键数据
      *
      * @param mixed $v
+     *
      * @return \Moon\Model
      */
     public function setPrimaryValue($v): Model {
@@ -2417,7 +2632,7 @@ class Model extends Table {
     /**
      * 获取符合条件的数据
      *
-     * @return array
+     * @return \Moon\Collection
      */
     public function all() {
         if (is_array($this->query_columns)) {
@@ -2444,6 +2659,7 @@ class Model extends Table {
      *
      * @param mixed $value
      * @param string $key
+     *
      * @return \Moon\Model
      */
     public function load($value = null, $key = null) {
@@ -2530,3 +2746,13 @@ class Model extends Table {
     }
 
 }
+
+/**
+ * Class RetryException
+ *
+ * @package Moon
+ */
+class RetryException extends \Exception {
+
+}
+
