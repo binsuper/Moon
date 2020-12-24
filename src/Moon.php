@@ -439,6 +439,13 @@ class Moon {
      */
     protected $rd_separate = false;
 
+    /**
+     * 断线重连次数
+     *
+     * @var int
+     */
+    protected $_reconnect_times = 1;
+
     public function __construct(array $options) {
         if (!is_array($options)) {
             return false;
@@ -446,7 +453,8 @@ class Moon {
 
         $this->setConnClass($options['class'] ?? '');
 
-        $this->rd_separate = isset($options['rd_seprate']) ? (bool)$options['rd_seprate'] : false;
+        $this->rd_separate      = isset($options['rd_seprate']) ? (bool)$options['rd_seprate'] : false;
+        $this->_reconnect_times = isset($options['rec_times']) ? $options['rec_times'] : 1;
 
         //区分读写分离
         if ($this->rd_separate) {
@@ -649,6 +657,7 @@ class Moon {
      * @param callable $callback 事务执行后的回调函数, 传入的参数为bool类型，true代表事务执行成功，反之为执行失败
      *
      * @return mixed
+     * @throws \Exception
      */
     public function transaction(callable $action, $callback = null) {
         return static::retry(function () use ($action, $callback) {
@@ -658,7 +667,7 @@ class Moon {
             return $ret;
         }, function () {
             $this->resetWriter();
-        });
+        }, $this->moon->getRecTimes());
     }
 
     /**
@@ -728,6 +737,7 @@ class Moon {
                 if (false !== strstr($ex->getMessage(), static::ERROR_SERVER_INTERRUPT)) {
                     throw new RetryException('', 0, $ex);
                 }
+                throw $ex;
             }
         } catch (RetryException $ex) {
             if ($retry_times > 0) {
@@ -739,6 +749,25 @@ class Moon {
             throw $ex->getPrevious();
         }
         return null;
+    }
+
+    /**
+     * 断线重连次数
+     *
+     * @return int
+     */
+    public function getRecTimes(): int {
+        return $this->_reconnect_times;
+    }
+
+    /**
+     * @param int $times
+     *
+     * @return $this
+     */
+    public function setRecTimes(int $times) {
+        $this->_reconnect_times = $times;
+        return $this;
     }
 
 }
@@ -2279,7 +2308,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalReader();
-        });
+        }, $this->moon->getRecTimes());
 
     }
 
@@ -2302,7 +2331,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalReader();
-        });
+        }, $this->moon->getRecTimes());
     }
 
     /**
@@ -2324,7 +2353,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalWriter();
-        });
+        }, $this->moon->getRecTimes());
     }
 
     /**
@@ -2346,7 +2375,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalWriter();
-        });
+        }, $this->moon->getRecTimes());
     }
 
     /**
@@ -2368,7 +2397,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalWriter();
-        });
+        }, $this->moon->getRecTimes());
     }
 
     /**
@@ -2390,7 +2419,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalReader();
-        });
+        }, $this->moon->getRecTimes());
     }
 
     /**
@@ -2415,7 +2444,7 @@ abstract class Table {
             return $ret;
         }, function () {
             $this->_resetInternalReader();
-        });
+        }, $this->moon->getRecTimes());
     }
 
 }

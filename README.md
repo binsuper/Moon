@@ -79,7 +79,8 @@ Moon目前仅有一种安装方式：
             PDO::ATTR_CASE       => PDO::CASE_NATURAL,
             PDO::ATTR_PERSISTENT => true,
             PDO::ATTR_ERRMODE    => PDO::ERRMODE_EXCEPTION
-        ]
+        ],
+        'rec_times'     => 2 // 断线后的重连次数
     );
     ```
 
