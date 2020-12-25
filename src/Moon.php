@@ -667,7 +667,7 @@ class Moon {
             return $ret;
         }, function () {
             $this->resetWriter();
-        }, $this->moon->getRecTimes());
+        }, $this->getRecTimes());
     }
 
     /**
